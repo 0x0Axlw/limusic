@@ -250,8 +250,8 @@ export function bumpLibraryTrackCount(playlistId: string, delta: number) {
 		// 1. prefix: Beginning of the line or any text with a trailing whitespace (e.g., "Playlist • ")
 		// 2. numStr: The numeric count with optional commas/dots (e.g., "11" or "1,234")
 		// 3. suffix: Whitespace followed by the localized label (e.g., " tracks", " композицій")
-		const subtitle = it.subtitle.replace(/(^|.*\s)([\d,.]+)(\s+[^\d]+)$/, (_, prefix, numStr, suffix) => {
-			const base = parseInt(numStr.replace(/[,.]/g, ''), 10);
+		const subtitle = it.subtitle.replace(/(^|.*?\s)([\d,.\s]+)(\s+[^\d]+)$/, (_, prefix, numStr, suffix) => {
+			const base = parseInt(numStr.replace(/[,\.\s]/g, ''), 10);
 			const n = Math.max(0, (isNaN(base) ? 0 : base) + delta);
 			return `${prefix}${n.toLocaleString()}${suffix}`;
 		});
