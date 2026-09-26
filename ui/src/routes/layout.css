@@ -821,6 +821,20 @@ input[type='range'].range:active::-webkit-slider-thumb {
 	background: transparent;
 }
 
+/* A shelf's sideways scrollbar. The arrows and the edge fades already say "this row continues", so
+   the bar is a hairline that only shows while the pointer is on the row: at 8px under every shelf
+   it was the heaviest line on home (#319). Still there for dragging, and the row still scrolls with
+   a trackpad or shift+wheel when it is invisible. */
+.rail::-webkit-scrollbar {
+	height: 4px;
+}
+.rail::-webkit-scrollbar-thumb {
+	background: transparent;
+}
+.rail:hover::-webkit-scrollbar-thumb {
+	background: color-mix(in srgb, var(--muted-foreground) 35%, transparent);
+}
+
 /* Respect users who ask the OS to minimise motion. */
 @media (prefers-reduced-motion: reduce) {
 	*, *::before, *::after {

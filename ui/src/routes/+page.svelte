@@ -3,7 +3,12 @@
 	import { fade } from 'svelte/transition';
 	import { goto } from '$app/navigation';
 	import { HugeiconsIcon } from '@hugeicons/svelte';
-	import { ArrowUpBigIcon, MusicNote01Icon, ViewOffSlashIcon } from '@hugeicons/core-free-icons';
+	import {
+		ArrowUpBigIcon,
+		DashboardSquareEditIcon,
+		MusicNote01Icon,
+		ViewOffSlashIcon
+	} from '@hugeicons/core-free-icons';
 	import { Skeleton } from '$lib/components/ui/skeleton';
 	import { Button } from '$lib/components/ui/button';
 	import MediaCardSkeleton from '$lib/components/MediaCardSkeleton.svelte';
@@ -63,15 +68,32 @@
 			.map((r) => freshen(r, library.items))
 	);
 
-	// Outlined at rest, filled with the accent when on. Grey-on-grey pills that go black when
-	// selected are YouTube Music's chip row exactly, and they carry no colour of the app at all;
-	// this way the one active filter is the only saturated thing above the feed.
+	// A faint tint at rest, the accent when on, so the one active filter is the only saturated thing
+	// above the feed. Tinted rather than outlined: a row of outlines was another dozen lines on a page
+	// that had too many (#319), and a tint of the foreground reads on the artwork and on a plain page.
 	const chipClass = (active: boolean) =>
-		`shrink-0 cursor-pointer rounded-full border px-3.5 py-1.5 text-sm font-medium transition-colors ${
+		`shrink-0 cursor-pointer rounded-full px-3.5 py-1.5 text-sm font-medium transition-colors ${
 			active
-				? 'border-primary bg-primary text-primary-foreground'
-				: 'border-border text-muted-foreground hover:border-foreground/25 hover:text-foreground'
+				? 'bg-primary text-primary-foreground'
+				: 'bg-foreground/5 text-foreground/75 hover:bg-foreground/10 hover:text-foreground'
 		}`;
+
+	// The chips stay while a filter is on even when Edit home switched them off: "All" is the way out.
+	const showChips = $derived(chips.length > 0 && (personal.home.chips || !!selected));
+	/** Anything in the chip row besides Edit Home: the chips, or their skeletons on a cold load. */
+	const chipRow = $derived(showChips || (loading && personal.home.chips));
+	// The chip bar sits on the header's artwork until it pins to the top, and only then needs a
+	// background of its own. Opaque at rest, it cut a hard band across the artwork right under the
+	// greeting. The sentinel is the line the bar leaves behind when it sticks.
+	let stuck = $state(false);
+	function stickWatch(node: HTMLElement) {
+		const io = new IntersectionObserver(
+			([e]) => (stuck = !e.isIntersecting && e.boundingClientRect.top < (e.rootBounds?.top ?? 0)),
+			{ root: node.closest('main') }
+		);
+		io.observe(node);
+		return () => io.disconnect();
+	}
 
 	// "Forgotten favourites" is pulled out of the feed and rendered as a list above it (see the
 	// markup) — the shelf's cards say nothing about a song, and this one is meant to be read.
@@ -328,45 +350,74 @@
 	});
 </script>
 
-<div {@attach watchScroll}>
-	<HomeHero onEdit={() => (editing = true)} />
-	<!-- Mood chips filter the whole feed, so they're page-level controls: sticky, they stay reachable
-	     while the feed scrolls under them instead of leaving with the header they were pinned to.
-	     Opaque rather than blurred — a backdrop-filter repainting on every scroll frame is the one
-	     thing WebKitGTK reliably chokes on. -->
-	<!-- Kept while a filter is on even when Edit home turned the row off: "All" is the way out. -->
-	{#if chips.length && (personal.home.chips || selected)}
-		<div class="sticky top-0 z-20 border-b bg-background px-6 pt-2.5">
-			<div class="flex gap-2 overflow-x-auto pb-2">
-				<!-- An explicit "All" is the way out of a filter. Clicking the active chip again also
-				     clears it, but nobody discovers that, and nothing else on screen says you're filtered. -->
-				<button onclick={() => load(null)} class={chipClass(!selected)}>{t('common.all')}</button>
-				{#each chips as chip (chip.params)}
-					<button
-						onclick={() => load(selected === chip.params ? null : chip.params)}
-						class={chipClass(selected === chip.params)}
-					>
-						{chip.title}
-					</button>
-				{/each}
-			</div>
+<!-- isolate: the header's artwork canvas sits at -z-10 and must stay inside this page, above the
+     window's background rather than behind it. -->
+<div class="relative isolate" {@attach watchScroll}>
+	<HomeHero />
+	<!-- The feed's control row: Edit Home, then the mood chips. Sticky, so both
+	     stay reachable while the feed scrolls under them instead of leaving with the header.
+	     Always rendered, even with the chips switched off in Edit home: the button that switches them
+	     back on lives here, so this row is the one part of the page that can't be hidden.
+	     Opaque when pinned rather than blurred: a backdrop-filter repainting on every scroll frame
+	     is the one thing WebKitGTK reliably chokes on. Under it, a short fade instead of a rule. -->
+	<div class="h-px" {@attach stickWatch}></div>
+	<div
+		class="sticky top-0 z-20 flex items-start gap-2 px-6 py-2.5 transition-colors duration-200 {stuck
+			? 'bg-background'
+			: ''}"
+	>
+		<!-- Leads the row, ahead of the chips, and never scrolls away with them: the only way into
+		     arranging home. An icon beside the chips (the tooltip names it); labelled once the chips
+		     are switched off, when it is alone in the row and a bare glyph would say nothing.
+		     Sized by the same padding and line height as a chip, plus its outline. Top-aligned with the
+		     chips, not centred on the row: an overflowing chip row reserves 4px under itself for the
+		     scrollbar, which put the button below them. -mt-px splits the outline's 2px. -->
+		<button
+			onclick={() => (editing = true)}
+			title={chipRow ? t('home.edit_home') : undefined}
+			aria-label={chipRow ? t('home.edit_home') : undefined}
+			class="-mt-px flex shrink-0 cursor-pointer items-center justify-center gap-1.5 rounded-full border border-border py-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground {chipRow
+				? 'px-1.5'
+				: 'pl-3 pr-3.5 text-sm font-medium'}"
+		>
+			<HugeiconsIcon icon={DashboardSquareEditIcon} class="h-5 w-5" />
+			{#if !chipRow}{t('home.edit_home')}{/if}
+		</button>
+		<div class="min-w-0 flex-1">
+			{#if showChips}
+				<div class="rail flex gap-2 overflow-x-auto">
+					<!-- An explicit "All" is the way out of a filter. Clicking the active chip again also
+					     clears it, but nobody discovers that, and nothing else on screen says you're filtered. -->
+					<button onclick={() => load(null)} class={chipClass(!selected)}>{t('common.all')}</button>
+					{#each chips as chip (chip.params)}
+						<button
+							onclick={() => load(selected === chip.params ? null : chip.params)}
+							class={chipClass(selected === chip.params)}
+						>
+							{chip.title}
+						</button>
+					{/each}
+				</div>
+			{:else if loading && personal.home.chips}
+				<!-- Hold the chips' place on a cold load: they arrive with the feed. -->
+				<div class="flex gap-2 overflow-hidden" aria-hidden="true">
+					{#each ['w-10', 'w-16', 'w-20', 'w-14', 'w-24', 'w-16'] as w, i (i)}
+						<Skeleton class="h-8 shrink-0 rounded-full {w}" />
+					{/each}
+				</div>
+			{/if}
 		</div>
-	{:else if loading && personal.home.chips}
-		<!-- Hold the bar's height on a cold load: chips arrive with the feed, and popping them in
-		     afterwards shoves the whole page down under the cursor. -->
-		<div class="sticky top-0 z-20 border-b bg-background px-6 pt-2.5" aria-hidden="true">
-			<div class="flex gap-2 overflow-hidden pb-2">
-				{#each ['w-10', 'w-16', 'w-20', 'w-14', 'w-24', 'w-16'] as w, i (i)}
-					<Skeleton class="h-8 shrink-0 rounded-full {w}" />
-				{/each}
-			</div>
-		</div>
-	{/if}
-	<div class="px-6 pb-6 pt-6">
+		{#if stuck}
+			<div
+				class="pointer-events-none absolute inset-x-0 top-full h-5 bg-gradient-to-b from-background to-transparent"
+			></div>
+		{/if}
+	</div>
+	<div class="px-6 pb-8 pt-4">
 		{#snippet shelfSkeletons(n: number)}
 			{#each Array(n) as _, s (s)}
 				<section aria-hidden="true">
-					<Skeleton class="mb-3 h-5 w-40 rounded" />
+					<Skeleton class="mb-4 h-6 w-44 rounded" />
 					<div class="flex gap-2 overflow-hidden pb-2">
 						{#each Array(6) as _, i (i)}
 							<div class="w-40 shrink-0"><MediaCardSkeleton /></div>
@@ -377,10 +428,10 @@
 		{/snippet}
 		<!-- One ordered column, so the sections the app builds itself sit among YouTube's shelves
 		     instead of above them, and a drag in Edit home can put any of them anywhere.
-		     gap-10, not gap-8: with a heading, a row of cards and no rule between them, shelves any
-		     closer than this stop reading as separate sections. -->
-		<div class="content-in flex flex-col gap-10">
-			{#each visible as block, i (block.id)}
+		     Space is the only thing between sections, no rules (#319), so it has to be generous:
+		     any closer than gap-12 and a heading reads as the caption of the row above it. -->
+		<div class="content-in flex flex-col gap-12">
+			{#each visible as block (block.id)}
 				{#if block.shelf}
 					<Shelf
 						title={block.shelf.title}
@@ -391,10 +442,7 @@
 						onMore={block.shelf.moreBrowseId ? () => showMore(block.shelf!) : undefined}
 					/>
 				{:else if block.key === SHORTCUTS}
-					<!-- Leading the page it is zone one: what's yours, above a rule that separates it from
-					     everything the app or YouTube chose. Moved further down it's a section like the
-					     rest, and a rule under one section in the middle would read as a divider. -->
-					<div class={i === 0 ? 'border-b pb-8' : ''}><Shortcuts /></div>
+					<Shortcuts />
 				{:else if block.key === RECENT}
 					{#if recent.length}<RecentRail items={recent} />{/if}
 				{:else if block.key === FAMILIAR}
@@ -408,7 +456,7 @@
 					<!-- Hold the slot open while the crawl runs, so landing the shelf doesn't shove the feed
 					     down under the reader's cursor. -->
 					<div aria-hidden="true">
-						<Skeleton class="mb-3 h-5 w-48 rounded" />
+						<Skeleton class="mb-4 h-6 w-52 rounded" />
 						<div class="columns-1 gap-x-6 md:columns-2 xl:columns-3">
 							{#each Array(15) as _, i (i)}
 								<div class="break-inside-avoid"><TrackRowSkeleton /></div>
@@ -458,7 +506,7 @@
 				{:else}
 					<!-- Skeletons only while a page is actually in flight; the sentinel above them is what
 					     triggers the fetch when it scrolls into range. -->
-					<div class="flex flex-col gap-10" aria-busy={loadingMore}>
+					<div class="flex flex-col gap-12" aria-busy={loadingMore}>
 						<div {@attach sentinel}></div>
 						{#if loadingMore}{@render shelfSkeletons(2)}{/if}
 					</div>

@@ -11,6 +11,9 @@
 	// with the shelves below. Hence wide tiles with the art flush to the leading edge — four to a row
 	// instead of seven, and the title gets four times the width.
 	//
+	// A tinted surface, no outline: the tiles often sit on the header's artwork, and a grid of
+	// outlined boxes was most of what made the top of home feel boxed in (#319).
+	//
 	// ponytail: drag is the only way to reorder (no keyboard equivalent). Add/remove/open all work
 	// from the keyboard; wire arrow-key moves onto the tiles if anyone actually needs it.
 	import { flip } from 'svelte/animate';
@@ -159,7 +162,7 @@
 							<div class="absolute -left-1 bottom-0 top-0 z-20 w-0.5 rounded-full bg-primary"></div>
 						{/if}
 						<div
-							class="flex h-16 cursor-pointer items-center gap-3 overflow-hidden rounded-xl border bg-card/40 text-left transition-colors hover:border-foreground/20 hover:bg-card"
+							class="flex h-16 cursor-pointer items-center gap-3 overflow-hidden rounded-xl bg-foreground/5 text-left transition-colors hover:bg-foreground/10"
 							role="button"
 							tabindex="0"
 							draggable="true"

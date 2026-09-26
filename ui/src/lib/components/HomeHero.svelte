@@ -1,15 +1,11 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
 	import { HugeiconsIcon } from '@hugeicons/svelte';
-	import { DashboardSquareEditIcon, HistoryIcon, Search01Icon } from '@hugeicons/core-free-icons';
+	import { HistoryIcon, Search01Icon } from '@hugeicons/core-free-icons';
 	import SearchSuggest from '$lib/components/SearchSuggest.svelte';
 	import { auth, personal, playback } from '$lib/player.svelte';
 	import { thumb } from '$lib/thumb';
 	import { t, type TranslationKey } from '$lib/i18n.svelte';
-
-	// The page owns the Edit home panel. The button lives here because the header is the one part of
-	// home that can't be hidden; it used to sit on Shortcuts, which now can be.
-	let { onEdit }: { onEdit: () => void } = $props();
 
 	// Fixed at mount — a greeting that flips mid-session is uncanny.
 	const hour = new Date().getHours();
@@ -37,12 +33,19 @@
 		playback.now?.thumbnail; // re-arm when the track changes
 		artFailed = false;
 	});
+
 </script>
 
-<!-- overflow-hidden lives on the backdrop wrapper, not the hero: the scaled blur has to be clipped,
-     but the search preview below has to hang out past the bottom edge. -->
-<div class="relative border-b">
-	<div class="pointer-events-none absolute inset-0 overflow-hidden">
+<header class="relative">
+	<!-- The canvas. It used to be clipped to the header with a rule under it, which boxed the greeting
+	     in a strip; now it runs on well past the header, under the mood chips and the first section,
+	     and fades into the page instead of ending at a line. -z-10 puts it under everything that
+	     follows, inside the stacking context home's wrapper opens (`isolate`), so it can never slip
+	     behind the window's own background. -->
+	<div
+		class="pointer-events-none absolute inset-x-0 top-0 -z-10 h-[30rem] overflow-hidden"
+		aria-hidden="true"
+	>
 		{#if personal.home.backdrop && playback.now?.thumbnail && !artFailed}
 			<!-- 96px, not display size: blur-2xl is a 40px blur, so every detail above a handful of
 			     pixels is thrown away anyway. The old 1200px source decoded to 5.7 MiB for this, and
@@ -50,79 +53,69 @@
 			<img
 				src={thumb(playback.now.thumbnail, 96)}
 				alt=""
-				class="pointer-events-none absolute inset-0 h-full w-full art-wash scale-110 object-cover opacity-60 blur-2xl"
+				class="art-wash absolute inset-0 h-full w-full scale-110 object-cover opacity-70 blur-2xl"
 				onerror={() => (artFailed = true)}
 			/>
 		{:else}
-			<!-- Nothing playing, or the artwork switched off in Edit home: without this the header is a
-			     bare strip with a greeting in it. An accent wash keeps it a header. Inline style so it
-			     can't be lost to a stale dev stylesheet, and it rides --primary so every preset theme
-			     gets its own. -->
+			<!-- Nothing playing, or the artwork switched off in Edit home: an accent wash keeps it a
+			     header rather than a bare greeting. Inline style so it can't be lost to a stale dev
+			     stylesheet, and it rides --primary so every preset theme gets its own. -->
 			<div
-				class="pointer-events-none absolute inset-0 opacity-[0.18]"
-				style="background:radial-gradient(120% 130% at 12% 0%, var(--primary) 0%, transparent 58%)"
+				class="absolute inset-0 opacity-[0.2]"
+				style="background:radial-gradient(90% 75% at 10% 0%, var(--primary) 0%, transparent 70%)"
 			></div>
 		{/if}
+		<!-- Ends on the page's own background exactly at the canvas's bottom edge, so there is no seam. -->
 		<div
-			class="absolute inset-0 bg-gradient-to-t from-background via-background/70 to-background/40"
+			class="absolute inset-0 bg-gradient-to-b from-background/25 via-background/70 to-background"
 		></div>
 		<div
-			class="absolute inset-0 bg-gradient-to-r from-background/80 via-background/30 to-transparent"
+			class="absolute inset-0 bg-gradient-to-r from-background/60 via-background/15 to-transparent"
 		></div>
 	</div>
-	<div class="relative p-6 pt-8">
-		<div class="flex items-start justify-between gap-4">
-			<div class="flex min-w-0 items-center gap-3">
-				{#if auth.account?.signedIn && auth.account.thumbnail}
-					<!-- max-width:none defeats Tailwind Preflight's `img{max-width:100%}`, which in a tight box
-					     clamps width to the content-box while height stays fixed → a vertical oval. Inline so
-					     it's immune to Preflight and to stale dev CSS. -->
-					<img
-						src={thumb(auth.account.thumbnail, 128)}
-						alt=""
-						style="width:2.75rem;height:2.75rem;max-width:none"
-						class="shrink-0 rounded-full object-cover ring-2 ring-border"
-					/>
-				{/if}
-				<h1 class="truncate font-heading text-4xl font-bold tracking-tight drop-shadow">
-					{daypart}{auth.account?.name ? `, ${auth.account.name.split(' ')[0]}` : ''}
-				</h1>
-			</div>
-			<div class="flex shrink-0 items-center gap-2">
-				<!-- Labelled and outlined, not a bare glyph: this is the only way into arranging home, and
-				     as an icon on its own nobody found it. -->
-				<button
-					onclick={onEdit}
-					class="flex h-9 shrink-0 cursor-pointer items-center gap-1.5 rounded-full border border-border px-3.5 text-sm font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-				>
-					<HugeiconsIcon icon={DashboardSquareEditIcon} class="h-4 w-4" />
-					{t('home.edit_home')}
-				</button>
-				<!-- Listen Together moved out of here and lives on the titlebar alone: history is the thing
-				     you reach for from the home page. -->
-				<button
-					onclick={() => goto('/history')}
-					title={t('nav.history')}
-					aria-label={t('nav.history')}
-					class="flex h-9 w-9 shrink-0 cursor-pointer items-center justify-center rounded-full border border-border text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-				>
-					<HugeiconsIcon icon={HistoryIcon} class="h-5 w-5" />
-				</button>
-				<form class="relative w-full max-w-xs" onsubmit={(e) => { e.preventDefault(); goSearch(); }}>
-					<HugeiconsIcon
-						icon={Search01Icon}
-						class="pointer-events-none absolute left-3 top-1/2 z-10 h-4 w-4 -translate-y-1/2 text-muted-foreground"
-					/>
-					<!-- The panel is wider than this field and hangs off its right edge: the rows carry
-					     artwork and two lines of text, which 20rem can't hold. -->
-					<SearchSuggest
-						bind:value={searchQuery}
-						placeholder={t('common.search')}
-						inputClass="rounded-full pl-9"
-						panelClass="right-0 w-[26rem]"
-					/>
-				</form>
-			</div>
+
+	<div class="flex items-center justify-between gap-6 px-6 pb-4 pt-10">
+		<div class="flex min-w-0 items-center gap-4">
+			{#if auth.account?.signedIn && auth.account.thumbnail}
+				<!-- max-width:none defeats Tailwind Preflight's `img{max-width:100%}`, which in a tight box
+				     clamps width to the content-box while height stays fixed → a vertical oval. Inline so
+				     it's immune to Preflight and to stale dev CSS. -->
+				<img
+					src={thumb(auth.account.thumbnail, 128)}
+					alt=""
+					style="width:3rem;height:3rem;max-width:none"
+					class="shrink-0 rounded-full object-cover shadow-md"
+				/>
+			{/if}
+			<h1 class="truncate font-heading text-4xl font-bold tracking-tight drop-shadow-sm">
+				{daypart}{auth.account?.name ? `, ${auth.account.name.split(' ')[0]}` : ''}
+			</h1>
+		</div>
+		<div class="flex shrink-0 items-center gap-2">
+			<!-- Listen Together moved out of here and lives on the titlebar alone: history is the thing
+			     you reach for from the home page. -->
+			<button
+				onclick={() => goto('/history')}
+				title={t('nav.history')}
+				aria-label={t('nav.history')}
+				class="flex h-9 w-9 shrink-0 cursor-pointer items-center justify-center rounded-full border border-border text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+			>
+				<HugeiconsIcon icon={HistoryIcon} class="h-5 w-5" />
+			</button>
+			<form class="relative w-full max-w-xs" onsubmit={(e) => { e.preventDefault(); goSearch(); }}>
+				<HugeiconsIcon
+					icon={Search01Icon}
+					class="pointer-events-none absolute left-3 top-1/2 z-10 h-4 w-4 -translate-y-1/2 text-muted-foreground"
+				/>
+				<!-- The panel is wider than this field and hangs off its right edge: the rows carry
+				     artwork and two lines of text, which 20rem can't hold. -->
+				<SearchSuggest
+					bind:value={searchQuery}
+					placeholder={t('common.search')}
+					inputClass="rounded-full pl-9"
+					panelClass="right-0 w-[26rem]"
+				/>
+			</form>
 		</div>
 	</div>
-</div>
+</header>

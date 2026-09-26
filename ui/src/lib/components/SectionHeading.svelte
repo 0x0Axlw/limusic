@@ -2,10 +2,10 @@
 	// One header for every section on home (and every shelf elsewhere), so the page reads as one
 	// document instead of a stack of unrelated widgets.
 	//
-	// The rule that runs from the title out to the trailing action is the whole idea: it gives a
-	// section a measurable width and an end, which a bare <h2> floating over a row of cards never
-	// had. It fades out rather than reaching the edge — a hard line all the way across would read as
-	// a divider between sections, and these sit above their content, not between them.
+	// Type does the work a rule used to. There was a line from the title out to the trailing action,
+	// on every section of every page, and with a dozen shelves that is a dozen lines boxing the feed
+	// in (#319). A title set larger and bolder than anything in the row under it separates the
+	// sections on its own, with the page's spacing between them.
 	import { HugeiconsIcon, type IconSvgElement } from '@hugeicons/svelte';
 	import { ArrowRight01Icon } from '@hugeicons/core-free-icons';
 	import type { Snippet } from 'svelte';
@@ -15,7 +15,6 @@
 		icon,
 		onMore,
 		moreLabel = 'See all',
-		headingClass = 'font-heading text-lg font-semibold',
 		children
 	}: {
 		title: string;
@@ -24,29 +23,27 @@
 		/** Renders the trailing "See all"; the title becomes a second way to click it. */
 		onMore?: () => void;
 		moreLabel?: string;
-		/** Artist and album pages set their shelves a size larger. */
-		headingClass?: string;
 		/** Controls at the far end, before "See all". */
 		children?: Snippet;
 	} = $props();
 </script>
 
-<div class="mb-3 flex items-center gap-3">
+<div class="mb-4 flex items-center gap-2.5">
 	{#if icon}
 		<!-- Keyed: HugeiconsIcon freezes `icon` at mount, and a shelf can settle on a different kind
 		     once its items arrive. -->
 		{#key icon}
-			<HugeiconsIcon {icon} class="h-4 w-4 shrink-0 text-primary/60" />
+			<HugeiconsIcon {icon} class="h-5 w-5 shrink-0 text-primary/70" />
 		{/key}
 	{/if}
 	{#if onMore}
 		<button class="min-w-0 cursor-pointer text-left" onclick={onMore} title="{moreLabel} {title}">
-			<h2 class="{headingClass} truncate hover:underline">{title}</h2>
+			<h2 class="truncate font-heading text-xl font-bold tracking-tight hover:underline">{title}</h2>
 		</button>
 	{:else}
-		<h2 class="{headingClass} min-w-0 truncate">{title}</h2>
+		<h2 class="min-w-0 truncate font-heading text-xl font-bold tracking-tight">{title}</h2>
 	{/if}
-	<div class="h-px min-w-6 flex-1 bg-gradient-to-r from-border to-transparent"></div>
+	<div class="min-w-6 flex-1"></div>
 	{@render children?.()}
 	{#if onMore}
 		<button

@@ -44,7 +44,6 @@
 		onMore,
 		community = false,
 		rich = true,
-		headingClass = 'font-heading text-lg font-semibold',
 		queueAll = true,
 		size = 'medium'
 	}: {
@@ -59,8 +58,6 @@
 		community?: boolean;
 		/** Opt out of the per-kind forms and render plain cards. */
 		rich?: boolean;
-		/** Artist and album pages use text-xl font-bold; home uses the default. */
-		headingClass?: string;
 		/**
 		 * Whether clicking a song row queues the rest of the shelf behind it. True for a shelf that
 		 * is a set (an album's songs, an artist's top tracks). False on home, where a shelf is a pile
@@ -165,7 +162,7 @@
 	style="contain-intrinsic-size: auto {height};"
 >
 	{#if title || onMore}
-		<SectionHeading title={title ?? ''} icon={ICONS[mode]} {onMore} {headingClass}>
+		<SectionHeading title={title ?? ''} icon={ICONS[mode]} {onMore}>
 			{#if songs.length}
 				<button
 					onclick={playAll}
@@ -183,7 +180,7 @@
 	     An attachment rather than onpointerenter: the handler doesn't make this div interactive. -->
 	<div class="group/shelf relative" {@attach measureOnEnter}>
 		<div
-			class="flex snap-x overflow-x-auto pb-2 {mode === 'song'
+			class="rail flex snap-x overflow-x-auto pb-2 {mode === 'song'
 				? 'gap-0'
 				: community
 					? 'gap-3'
@@ -195,14 +192,10 @@
 				{#each others as item (item.id)}
 					<div class="min-w-0 shrink-0 snap-start pr-4" style={cardWidth()}><MediaCard {item} /></div>
 				{/each}
-				<!-- A rule down each column but the first: the same editorial device as the heading, and
-				     what makes a paged block of rows read as columns rather than one long list. -->
+				<!-- A gutter between columns, not a rule down each one: the rows' own hover fill already
+				     shows where a column ends, and the rules were four more lines per shelf (#319). -->
 				{#each columns as col, c (c)}
-					<div
-						class="min-w-0 shrink-0 snap-start {SONG_SLOT} {c || others.length
-							? 'border-l pl-4'
-							: ''} pr-4"
-					>
+					<div class="min-w-0 shrink-0 snap-start {SONG_SLOT} pr-6">
 						{#each col as song, r (song.video_id + ':' + r)}
 							<TrackRow
 								{song}
