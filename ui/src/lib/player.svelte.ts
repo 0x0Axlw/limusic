@@ -245,10 +245,13 @@ export function patchLibraryPlaylist(playlistId: string, patch: Partial<BrowseIt
 export function bumpLibraryTrackCount(playlistId: string, delta: number) {
 	library.items = library.items.map((it) => {
 		if (it.id !== playlistId || !it.subtitle) return it;
-		const subtitle = it.subtitle.replace(/\d+\s+tracks?/, (m) => {
-			const n = Math.max(0, parseInt(m) + delta);
-			return `${n} track${n === 1 ? '' : 's'}`;
-		});
+		// YouTube writes the count in the UI's language ("6 tracks", "12 композицій", "트랙 6개"), so
+		// bump the last number and leave the words alone. English is the one plural we can fix up.
+		const subtitle = it.subtitle
+			.replace(/\d(?:[\d,.\s]*\d)?(?=\D*$)/, (m) =>
+				Math.max(0, parseInt(m.replace(/\D/g, ''), 10) + delta).toLocaleString()
+			)
+			.replace(/\b([\d,]+) tracks?$/, (_, n) => `${n} track${n === '1' ? '' : 's'}`);
 		return { ...it, subtitle };
 	});
 }
