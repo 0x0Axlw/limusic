@@ -33,21 +33,23 @@ export function matchLocales<T extends Searchable>(locales: T[], query: string):
 	return locales.filter((l) => fold(`${l.nativeLabel} ${l.englishLabel} ${l.id}`).includes(q));
 }
 
-/** Non-blank strings anywhere in a catalog. Weblate writes an untranslated string as "". */
-export function filledStrings(node: unknown): number {
-	if (typeof node === 'string') return node.trim() ? 1 : 0;
-	if (node && typeof node === 'object')
-		return Object.values(node).reduce<number>((n, v) => n + filledStrings(v), 0);
+/**
+ * Non-blank strings in `catalog` at the paths where English has one. Weblate writes an untranslated
+ * string as "", and it keeps keys English has since dropped for a while, so those count for nothing.
+ */
+function translated(english: unknown, catalog: unknown): number {
+	if (typeof english === 'string')
+		return english.trim() && typeof catalog === 'string' && catalog.trim() ? 1 : 0;
+	if (english && typeof english === 'object' && catalog && typeof catalog === 'object')
+		return Object.entries(english).reduce<number>(
+			(n, [k, v]) => n + translated(v, (catalog as Record<string, unknown>)[k]),
+			0
+		);
 	return 0;
 }
 
-/**
- * How much of `catalog` is translated, 0..1, against English as the complete one.
- *
- * Clamped, for a catalog that still carries keys English has since dropped: Weblate keeps its own
- * copy and lags a little behind the source.
- */
-export function coverage(catalog: unknown, englishKeys: number): number {
-	if (englishKeys <= 0) return 1;
-	return Math.min(1, filledStrings(catalog) / englishKeys);
+/** How much of `catalog` is translated, 0..1, against English as the complete one. */
+export function coverage(catalog: unknown, english: unknown): number {
+	const total = translated(english, english);
+	return total > 0 ? translated(english, catalog) / total : 1;
 }

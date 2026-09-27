@@ -128,9 +128,9 @@
 		if (!name.trim()) return toast.error(t('dialogs.listen_together.err_enter_name'));
 		const parsed = parseInvite(inviteInput);
 		if (!parsed || !parsed.code) return toast.error(t('dialogs.listen_together.err_paste_code'));
-		// A bare code joins whatever server we are already set to, which is the default until the
-		// user picks their own.
-		const server = parsed.server ? normalize(parsed.server) : lt.serverUrl;
+		// A bare code is what a host on the default server sends (`makeInvite`), so it means the
+		// default even for a guest who set their own: a self-hosted room's invite carries its address.
+		const server = parsed.server ? normalize(parsed.server) : '';
 		busy = true;
 		try {
 			if (server !== lt.serverUrl) await api.ltSetServerUrl(server);

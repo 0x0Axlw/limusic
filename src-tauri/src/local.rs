@@ -966,6 +966,44 @@ mod tests {
     }
 
     #[test]
+    fn two_albums_sharing_a_title_stay_apart() {
+        // Title then disc used to deal two two-disc "Greatest Hits" out a disc at a time.
+        let t = |path: &str, aa: Option<&str>, key: &str, disc: i64| LocalTrack {
+            album_artist: aa.map(Into::into),
+            disc_no: disc,
+            ..track(path, "x", "Greatest Hits", key)
+        };
+        let paths = |tracks: &[LocalTrack]| {
+            let db = Db::open(Path::new(":memory:")).unwrap();
+            db.put_local_tracks(tracks);
+            db.local_tracks(None).into_iter().map(|t| t.path).collect::<Vec<_>>()
+        };
+        let want = ["/a/1.flac", "/a/2.flac", "/q/1.flac", "/q/2.flac"];
+
+        let (abba, queen) = (Some("ABBA"), Some("Queen"));
+        assert_eq!(
+            paths(&[
+                t("/q/2.flac", queen, "queen--greatest-hits", 2),
+                t("/a/1.flac", abba, "abba--greatest-hits", 1),
+                t("/q/1.flac", queen, "queen--greatest-hits", 1),
+                t("/a/2.flac", abba, "abba--greatest-hits", 2),
+            ]),
+            want
+        );
+        // No album artist: the key is a folder digest, whose order means nothing, so the folder
+        // decides. These digests sort the other way round on purpose.
+        assert_eq!(
+            paths(&[
+                t("/q/2.flac", None, "dir-00-greatest-hits", 2),
+                t("/a/1.flac", None, "dir-ff-greatest-hits", 1),
+                t("/q/1.flac", None, "dir-00-greatest-hits", 1),
+                t("/a/2.flac", None, "dir-ff-greatest-hits", 2),
+            ]),
+            want
+        );
+    }
+
+    #[test]
     fn numbers_read_through_a_total() {
         let mut tag = lofty::tag::Tag::new(lofty::tag::TagType::VorbisComments);
         tag.insert_text(ItemKey::DiscNumber, "2/2".into());

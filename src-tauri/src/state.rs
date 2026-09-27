@@ -379,6 +379,11 @@ impl QueueState {
         // one-retry marker can go stale. Without this it is "retried once, ever": a track that
         // was retried in the morning gets no retry tonight.
         self.retried = None;
+        // Past the head, Previous has a track of its own, and coming back to the head later (a
+        // repeat-all wrap, a click on the first row) must not swap this queue for a stale one.
+        if index > 0 {
+            self.prev_context = None;
+        }
     }
 
     /// Set this queue aside so Previous can come back to it. `position` is mpv's.
@@ -1722,7 +1727,8 @@ impl AppState {
                 if me.extend_queue_radio(gen).await > 0 {
                     {
                         let mut q = me.queue.lock().await;
-                        q.current += 1; // the first appended track
+                        let next = q.current + 1; // the first appended track
+                        q.seek_to(next);
                         q.lookahead_loaded = None; // start_current's loadfile replaces mpv's playlist
                     }
                     if me.start_current(gen).await {
@@ -1980,7 +1986,8 @@ impl AppState {
                         self.emit_error(&item.video_id, &e.to_string()); // nothing left to skip to
                         return false;
                     }
-                    q.current += 1;
+                    let next = q.current + 1;
+                    q.seek_to(next);
                     q.lookahead_loaded = None;
                     drop(q);
                     self.emit_skip(&item.title, skip_reason(&e));
@@ -5053,10 +5060,13 @@ mod tests {
         q.current = 0;
         assert_eq!(prev_track_title(&q), Some("b"));
 
-        // The radio hydrated behind the clicked song and it played on: the kept queue is still
-        // there, but Previous has a track of its own to reach now, so the line goes.
+        // The radio hydrated behind the clicked song and it played on: Previous has a track of its
+        // own to reach now, so the kept queue and the line go.
         q.items.push(song("radio", None));
-        q.current = 1;
+        q.seek_to(1);
+        assert_eq!(prev_track_title(&q), None);
+        // And back at the head (repeat-all wrapped, or the first row was clicked) it stays gone.
+        q.seek_to(0);
         assert_eq!(prev_track_title(&q), None);
     }
 

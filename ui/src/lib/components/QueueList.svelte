@@ -339,6 +339,9 @@
 				variant="ghost"
 				size="xs"
 				class="mr-auto h-7 min-w-0 shrink cursor-pointer gap-1.5 rounded-md px-2 text-muted-foreground transition-colors duration-150 hover:text-foreground focus-visible:ring-2 motion-reduce:transition-none"
+				onkeydown={(event) => {
+					if (event.key === ' ') event.stopPropagation();
+				}}
 				onclick={() => api.backToPrevious()}
 			>
 				<HugeiconsIcon icon={ArrowTurnBackwardIcon} class="size-3.5 shrink-0" />

@@ -5,7 +5,7 @@
 import { browser } from '$app/environment';
 import { invoke } from '@tauri-apps/api/core';
 import { translations, LOCALES, type LocaleId, type Translations } from './locales';
-import { coverage, filledStrings } from './langlist';
+import { coverage } from './langlist';
 
 export type { LocaleId };
 
@@ -102,10 +102,9 @@ export function t(key: TranslationKey, params?: Record<string, string | number>)
  * Counted once at module load: the catalogs are bundled and nothing here changes at runtime.
  */
 export const COVERAGE: Record<LocaleId, number> = (() => {
-	const englishKeys = filledStrings(translations.en);
 	const ids = Object.keys(translations) as LocaleId[];
 	return Object.fromEntries(
-		ids.map((id) => [id, coverage(translations[id], englishKeys)])
+		ids.map((id) => [id, coverage(translations[id], translations.en)])
 	) as Record<LocaleId, number>;
 })();
 

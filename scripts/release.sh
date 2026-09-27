@@ -99,7 +99,7 @@ git fetch --quiet origin master
 HIGHEST=""
 while read -r v; do
   [ "$RC" = 1 ] || [[ "$v" != *-* ]] || continue
-  [ -z "$HIGHEST" ] || semver_gt "$v" "$HIGHEST" && HIGHEST="$v"
+  if [ -z "$HIGHEST" ] || semver_gt "$v" "$HIGHEST"; then HIGHEST="$v"; fi
 done < <(gh release list --repo "$REPO" --limit 50 --json tagName --jq '.[].tagName' \
   | sed -n 's/^v\([0-9]\)/\1/p')
 [ -z "$HIGHEST" ] || semver_gt "$VERSION" "$HIGHEST" \

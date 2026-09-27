@@ -138,6 +138,8 @@
 		const videoId = track.videoId;
 		const r = id ? results[id] : undefined;
 		if (id && (r?.status !== 'done' || !r.lyrics)) return;
+		// A nudge still waiting to be saved belongs to the lyrics being replaced.
+		clearTimeout(offsetTimer);
 		if (r?.status === 'done' && r.lyrics) {
 			onchange({ ...r.lyrics, pinned: true, offset_ms: 0 }, videoId);
 		}

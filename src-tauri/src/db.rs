@@ -1131,8 +1131,21 @@ impl Db {
         // Disc before track, since every disc numbers from 1 (issue #315). The folder sits between
         // them for a rip with no disc tag: CD1/ and CD2/ keep their tracks apart instead of
         // interleaving them. It changes nothing for an album that lives in one folder.
-        fn order(t: &LocalTrack) -> (&str, i64, Option<&std::path::Path>, i64, &str) {
-            (&t.album, t.disc_no, std::path::Path::new(&t.path).parent(), t.track_no, &t.title)
+        //
+        // The album itself goes right after the title, or two albums sharing one ("Greatest Hits")
+        // are dealt out a disc at a time. With no album artist the key is the folder's digest
+        // (`local::tagged_album_key`), so the folder stands in for it there: it sorts by name,
+        // which keeps an untagged CD1/ ahead of CD2/.
+        fn order(
+            t: &LocalTrack,
+        ) -> (&str, &str, Option<&std::path::Path>, i64, Option<&std::path::Path>, i64, &str)
+        {
+            let dir = std::path::Path::new(&t.path).parent();
+            let (key, key_dir) = match t.album_artist {
+                Some(_) => (t.album_key.as_str(), None),
+                None => ("", dir),
+            };
+            (&t.album, key, key_dir, t.disc_no, dir, t.track_no, &t.title)
         }
         out.sort_by(|a, b| order(a).cmp(&order(b)));
         out
