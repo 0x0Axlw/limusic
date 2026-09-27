@@ -206,7 +206,13 @@ jobs:
       - name: Tauri CLI
         # The npm CLI ships a prebuilt binary — `cargo install tauri-cli` would compile it from
         # source on every cache miss (~5 min for nothing).
-        run: npm install -g "@tauri-apps/cli@^2"
+        #
+        # PINNED, like the actions. `^2` took 2.12.0 the day it was published and broke two legs at
+        # once: its new linuxdeploy stopped bundling libgmp and libpipewire (the bundle check
+        # caught it), and it stopped exporting STATIC_VCRUNTIME=true, which the locked tauri-build
+        # 2.6.3 needs for the hybrid CRT link, so rquickjs-sys no longer linked on Windows. Move it
+        # on purpose, with the tauri crates, and dry-run all three legs before a release.
+        run: npm install -g "@tauri-apps/cli@2.11.5"
 
       # The gitignored src-tauri/lastfm.keys (read by build.rs) obviously isn't in the checkout —
       # recreate it from repo secrets. Missing secrets are a warning, not a failure: the app is
