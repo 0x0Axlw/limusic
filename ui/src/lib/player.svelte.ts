@@ -245,17 +245,13 @@ export function patchLibraryPlaylist(playlistId: string, patch: Partial<BrowseIt
 export function bumpLibraryTrackCount(playlistId: string, delta: number) {
 	library.items = library.items.map((it) => {
 		if (it.id !== playlistId || !it.subtitle) return it;
-
-		// Regex captures:
-		// 1. prefix: Beginning of the line or any text with a trailing whitespace (e.g., "Playlist • ")
-		// 2. numStr: The numeric count with optional commas/dots (e.g., "11" or "1,234")
-		// 3. suffix: Whitespace followed by the localized label (e.g., " tracks", " композицій")
-		const subtitle = it.subtitle.replace(/(^|.*?\s)([\d,.\s]+)(\s+[^\d]+)$/, (_, prefix, numStr, suffix) => {
-			const base = parseInt(numStr.replace(/[,\.\s]/g, ''), 10);
-			const n = Math.max(0, (isNaN(base) ? 0 : base) + delta);
-			return `${prefix}${n.toLocaleString()}${suffix}`;
-		});
-
+		// YouTube writes the count in the UI's language ("6 tracks", "12 композицій", "트랙 6개"), so
+		// bump the last number and leave the words alone. English is the one plural we can fix up.
+		const subtitle = it.subtitle
+			.replace(/\d(?:[\d,.\s]*\d)?(?=\D*$)/, (m) =>
+				Math.max(0, parseInt(m.replace(/\D/g, ''), 10) + delta).toLocaleString()
+			)
+			.replace(/\b([\d,]+) tracks?$/, (_, n) => `${n} track${n === '1' ? '' : 's'}`);
 		return { ...it, subtitle };
 	});
 }
