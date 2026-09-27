@@ -770,18 +770,41 @@ export interface LyricLine {
 export interface Lyrics {
 	/** Attribution for the panel footer ("LRCLIB", "Source: Musixmatch", …). */
 	source: string;
+	/** Id of the provider that answered (`LyricsProvider.id`). */
+	provider: string;
 	synced: boolean;
 	instrumental: boolean;
 	lines: LyricLine[];
+	/** The source was picked by hand for this song (or its timing nudged). */
+	pinned: boolean;
+	/** Timing nudge in ms, positive = lyrics later. */
+	offset_ms: number;
 }
-/** Cached on the Rust side (provider chain: LRCLIB → YT Music). `null` = none found. */
-export const getLyrics = (args: {
+// A type, not an interface: `invoke` takes a record, and only a type alias is assignable to one.
+export type LyricsTrack = {
 	videoId: string;
 	title: string;
 	artists: string;
 	album?: string;
 	duration?: number;
-}) => invoke<Lyrics | null>('get_lyrics', args);
+};
+/** Cached on the Rust side, down the user's provider order. `null` = none found. `source` asks that
+ *  one provider alone and caches nothing (the source picker's preview); it rejects when the
+ *  provider couldn't be reached, which is not the same as it having no lyrics. */
+export const getLyrics = (args: LyricsTrack & { source?: string }) =>
+	invoke<Lyrics | null>('get_lyrics', args);
+/** Keep `source`'s lyrics for this song, or (`null`) hand it back to the provider order. */
+export const chooseLyricsSource = (args: LyricsTrack & { source: string | null }) =>
+	invoke<Lyrics | null>('choose_lyrics_source', args);
+export const setLyricsOffset = (videoId: string, offsetMs: number) =>
+	invoke<void>('set_lyrics_offset', { videoId, offsetMs });
+export interface LyricsProvider {
+	id: string;
+	name: string;
+	on: boolean;
+}
+/** Every provider in the user's order (setting `lyrics_providers`: ids, `-id` switched off). */
+export const lyricsProviders = () => invoke<LyricsProvider[]>('lyrics_providers');
 
 // --- Window ------------------------------------------------------------------------------------
 /** Theater mode's fullscreen. Not `getCurrentWindow().setFullscreen` (#139): Windows needs the

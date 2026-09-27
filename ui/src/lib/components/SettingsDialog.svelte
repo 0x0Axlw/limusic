@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { untrack, type Snippet } from 'svelte';
+	import { tick, untrack, type Snippet } from 'svelte';
 	import { open, save } from '@tauri-apps/plugin-dialog';
 	import { HugeiconsIcon } from '@hugeicons/svelte';
 	import {
@@ -68,6 +68,7 @@
 	import { t, setLocale, currentLocale, LOCALES } from '$lib/i18n.svelte';
 	import { appIcon, chooseAppIcon } from '$lib/appicon.svelte';
 	import GlobalHotkeysSettings from '$lib/components/GlobalHotkeysSettings.svelte';
+	import LyricsSourcesSettings from '$lib/components/LyricsSourcesSettings.svelte';
 	import LanguagePicker from '$lib/components/LanguagePicker.svelte';
 
 	type TabId = 'general' | 'themes' | 'playback' | 'hotkeys' | 'discord' | 'data' | 'about';
@@ -216,7 +217,18 @@
 	$effect(() => {
 		if (!ui.settingsOpen) return;
 		untrack(() => {
-			load();
+			// Opened on a section from elsewhere (the lyrics source picker): its tab, scrolled to it
+			// once the tab has rendered.
+			if (ui.settingsFocus) {
+				tab = 'playback';
+				const id = `settings-${ui.settingsFocus}`;
+				ui.settingsFocus = null;
+				load().then(tick).then(() => {
+					document.getElementById(id)?.scrollIntoView({ block: 'start', behavior: 'smooth' });
+				});
+			} else {
+				load();
+			}
 			updateResult = null;
 			pickerOpen = false;
 			readBack();
@@ -322,7 +334,6 @@
 	// Off until the setting is turned on: still experimental, so nobody gets video they didn't ask
 	// for. Same test in `player.svelte.ts`, which hydrates `prefs` at launch.
 	const musicVideosOn = $derived(settings.music_videos === 'true');
-	const boiduOn = $derived(settings.lyrics_boidu !== 'false');
 	// Off by default: the full byline is what YouTube credits, and cutting it is a preference
 	// with a real failure mode (a comma-joined duo name), not a fix (issue #231).
 	const lastfmPrimaryOn = $derived(settings.lastfm_primary_artist === 'true');
@@ -409,11 +420,6 @@
 	async function setLastfmStrict(on: boolean) {
 		settings.lastfm_primary_strict = on ? 'true' : 'false';
 		await api.setSetting('lastfm_primary_strict', settings.lastfm_primary_strict);
-	}
-
-	async function setBoidu(on: boolean) {
-		settings.lyrics_boidu = on ? 'true' : 'false';
-		await api.setSetting('lyrics_boidu', settings.lyrics_boidu);
 	}
 
 	async function setPreventDuplicates(on: boolean) {
@@ -836,16 +842,9 @@
 								{/if}
 							</div>
 						</section>
-						<section class={GROUP}>
+						<section class={GROUP} id="settings-lyrics">
 							<h3 class={LABEL}>{t('settings.sections.lyrics')}</h3>
-							<div class={CARD}>
-								{@render row({
-									title: t('settings.playback.lyrics_provider'),
-									desc: t('settings.playback.lyrics_provider_hint'),
-									control: boiduSwitch,
-									tall: true
-								})}
-							</div>
+							<LyricsSourcesSettings {settings} />
 						</section>
 						<section class={GROUP}>
 							<h3 class={LABEL}>{t('settings.sections.advanced')}</h3>
@@ -1047,7 +1046,6 @@
 		checked={lastfmStrictOn}
 		onCheckedChange={setLastfmStrict}
 	/>{/snippet}
-{#snippet boiduSwitch()}<Switch checked={boiduOn} onCheckedChange={setBoidu} />{/snippet}
 {#snippet bannerSwitch()}<Switch checked={updateBannerOn} onCheckedChange={setUpdateBanner} />{/snippet}
 {#snippet openPlayerSwitch()}<Switch
 		checked={appearance.openPlayerOnPlay}

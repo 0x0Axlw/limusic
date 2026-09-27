@@ -439,12 +439,11 @@ mod tests {
         use crate::lyrics::LyricLine;
         let mut l = Lyrics {
             source: "t".into(),
-            synced: false,
-            instrumental: false,
             lines: vec![
                 LyricLine::simple(None, "Я тебя люблю".into()),
                 LyricLine::simple(None, "Hey".into()),
             ],
+            ..Default::default()
         };
         fill(&mut l);
         assert_eq!(l.lines[0].romanized.as_deref(), Some("Ya tebya lyublyu"));

@@ -229,7 +229,7 @@ const UI_SETTINGS: [&str; 23] = [
     "hide_videos",
     "prevent_duplicates",
     "update_banner",
-    "lyrics_boidu",
+    "lyrics_providers",
     "music_videos",
     "sticky_shuffle",
     "system_titlebar",
@@ -348,9 +348,9 @@ pub async fn set_setting(
     if key == "hide_videos" {
         state.it.set_hide_videos(value == "true");
     }
-    // Cached lyrics outlive the setting that produced them, so a track fetched while Boidu was on
-    // would keep its word timings (and one fetched while off would never gain them) forever.
-    if key == "lyrics_boidu" {
+    // Cached lyrics outlive the order that produced them, so a reorder would otherwise reach only
+    // songs never played. Songs whose source was picked by hand keep it.
+    if key == "lyrics_providers" {
         state.db.clear_lyrics_cache();
     }
     // Hand the frame back to the compositor (or take it again). macOS is not on this path: its
@@ -1701,7 +1701,8 @@ pub async fn lt_request_sync(state: St<'_>) -> Result<(), String> {
 // --- lyrics ---------------------------------------------------------------------------------
 
 /// Lyrics for a track (cached). The UI passes the metadata it already has from `now-playing`;
-/// `duration` is mpv's length in seconds. `None` = no lyrics found anywhere.
+/// `duration` is mpv's length in seconds. `None` = no lyrics found anywhere. `source` asks one
+/// provider alone, uncached: the source picker's preview.
 #[tauri::command]
 pub async fn get_lyrics(
     state: St<'_>,
@@ -1710,12 +1711,37 @@ pub async fn get_lyrics(
     artists: String,
     album: Option<String>,
     duration: Option<f64>,
+    source: Option<String>,
 ) -> Result<Option<crate::lyrics::Lyrics>, String> {
-    Ok(crate::lyrics::get_lyrics(
-        state.inner(),
-        crate::lyrics::LyricsRequest { video_id, title, artists, album, duration },
-    )
-    .await)
+    let req = crate::lyrics::LyricsRequest { video_id, title, artists, album, duration };
+    crate::lyrics::get_lyrics(state.inner(), req, source).await
+}
+
+/// Keep one provider's lyrics for this song (`source`), or hand it back to the provider order
+/// (`None`). Returns what the song shows now.
+#[tauri::command]
+pub async fn choose_lyrics_source(
+    state: St<'_>,
+    video_id: String,
+    title: String,
+    artists: String,
+    album: Option<String>,
+    duration: Option<f64>,
+    source: Option<String>,
+) -> Result<Option<crate::lyrics::Lyrics>, String> {
+    let req = crate::lyrics::LyricsRequest { video_id, title, artists, album, duration };
+    Ok(crate::lyrics::choose_source(state.inner(), req, source).await)
+}
+
+#[tauri::command]
+pub fn set_lyrics_offset(state: St<'_>, video_id: String, offset_ms: i64) {
+    crate::lyrics::set_offset(state.inner(), &video_id, offset_ms);
+}
+
+/// Every lyrics provider in the user's order, for Settings and the source picker.
+#[tauri::command]
+pub fn lyrics_providers(state: St<'_>) -> Vec<crate::lyrics::ProviderInfo> {
+    crate::lyrics::providers(state.inner())
 }
 
 // --- Changelog ------------------------------------------------------------------------------

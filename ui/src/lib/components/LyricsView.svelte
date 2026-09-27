@@ -1,26 +1,29 @@
 <script module lang="ts">
-	// Romanization (#202) is one switch: on stays on across every song until it is turned off.
-	// Shared by every lyrics view, and the `storage` event carries a change over to the mini player
-	// window.
-	const ROMANIZED_KEY = 'lyrics_romanized';
+	// Romanization (#202) and translations (#329) are one switch each: on stays on across every song
+	// until it is turned off. Shared by every lyrics view, and the `storage` event carries a change
+	// over to the mini player window. Translations start on, the way they always showed.
+	const KEYS = { romanized: 'lyrics_romanized', translated: 'lyrics_translated' } as const;
+	type Pref = keyof typeof KEYS;
+	const DEFAULTS: Record<Pref, boolean> = { romanized: false, translated: true };
 
-	function loadRomanized(): boolean {
+	function load(pref: Pref): boolean {
 		try {
-			return localStorage.getItem(ROMANIZED_KEY) === '1';
+			const v = localStorage.getItem(KEYS[pref]);
+			return v === null ? DEFAULTS[pref] : v === '1';
 		} catch {
-			return false;
+			return DEFAULTS[pref];
 		}
 	}
 
-	const romanized = $state({ on: loadRomanized() });
+	const prefs = $state({ romanized: load('romanized'), translated: load('translated') });
 	window.addEventListener('storage', (e) => {
-		if (e.key === ROMANIZED_KEY) romanized.on = loadRomanized();
+		for (const pref of Object.keys(KEYS) as Pref[]) if (e.key === KEYS[pref]) prefs[pref] = load(pref);
 	});
 
-	function toggleRomanized() {
-		romanized.on = !romanized.on;
+	function toggle(pref: Pref) {
+		prefs[pref] = !prefs[pref];
 		try {
-			localStorage.setItem(ROMANIZED_KEY, romanized.on ? '1' : '0');
+			localStorage.setItem(KEYS[pref], prefs[pref] ? '1' : '0');
 		} catch {
 			// Private storage: the toggle still works for this session.
 		}
@@ -29,10 +32,11 @@
 
 <script lang="ts">
 	import { HugeiconsIcon } from '@hugeicons/svelte';
-	import { CharacterPhoneticIcon } from '@hugeicons/core-free-icons';
+	import { CharacterPhoneticIcon, Search01Icon, TranslateIcon } from '@hugeicons/core-free-icons';
 	import * as api from '$lib/api';
 	import { playback } from '$lib/player.svelte';
 	import { t } from '$lib/i18n.svelte';
+	import LyricsSourcePicker from './LyricsSourcePicker.svelte';
 
 	// `expanded` only sizes the type and centres the column. The owner of the extra room (the side
 	// panel, or the now-playing view) decides how much there is. Toggling it must not remount this
@@ -55,7 +59,32 @@
 	let scroller: HTMLElement | undefined = $state();
 
 	const canRomanize = $derived(!!lyrics?.lines.some((l) => l.romanized));
-	const showRomanized = $derived(canRomanize && romanized.on);
+	const showRomanized = $derived(canRomanize && prefs.romanized);
+	const canTranslate = $derived(!!lyrics?.lines.some((l) => l.translation));
+	const showTranslation = $derived(canTranslate && prefs.translated);
+	/** This song's timing nudge, from the source picker. Positive holds the lyrics back. */
+	const offsetMs = $derived(lyrics?.offset_ms ?? 0);
+	let pickerOpen = $state(false);
+
+	/** What the source picker asks the providers about. mpv's length stands in when the queue item
+	 *  has none: by the time anyone opens the picker, the song is the one playing. */
+	const track = $derived.by((): api.LyricsTrack | null => {
+		const now = playback.now;
+		if (!now) return null;
+		return {
+			videoId: now.videoId,
+			title: now.title,
+			artists: now.artists,
+			album: playback.queue.items[playback.queue.currentIndex]?.album ?? undefined,
+			duration: durationSecs(now.duration) ?? (playback.duration > 0 ? playback.duration : undefined)
+		};
+	});
+
+	function onPicked(l: api.Lyrics | null, videoId: string) {
+		if (requested !== videoId) return; // the song moved on while it was being fetched
+		lyrics = l;
+		hasScrolled = false;
+	}
 
 	// videoId of the fetch whose result is (or will be) shown — guards stale responses.
 	let requested = '';
@@ -148,7 +177,7 @@
 
 	function seekTo(line: api.LyricLine) {
 		if (line.time_ms === undefined) return;
-		const secs = line.time_ms / 1000;
+		const secs = Math.max(0, (line.time_ms + offsetMs) / 1000);
 		playback.position = secs; // optimistic — the mpv tick confirms
 		userScrollUntil = 0; // jump the view along with the seek
 		api.seek(secs);
@@ -186,7 +215,7 @@
 		return () => cancelAnimationFrame(frameId);
 	});
 
-	const posMs = $derived(interpolatedPosSecs * 1000);
+	const posMs = $derived(interpolatedPosSecs * 1000 - offsetMs);
 
 	function getWordProgress(word: api.LyricWord, currentMs: number): number {
 		if (currentMs <= word.start_ms) return 0;
@@ -261,8 +290,7 @@
 						</span>
 					{/if}
 
-					<!-- Translation line rendering -->
-					{#if line.translation}
+					{#if showTranslation && line.translation}
 						<p class="mt-1 text-sm font-normal italic tracking-wide opacity-80 transition-opacity">
 							{line.translation}
 						</p>
@@ -285,7 +313,7 @@
 						{#if showRomanized && line.romanized}
 							<p class="text-[0.85em] text-muted-foreground">{line.romanized}</p>
 						{/if}
-						{#if line.translation}
+						{#if showTranslation && line.translation}
 							<p class="text-xs italic text-muted-foreground">{line.translation}</p>
 						{/if}
 					</div>
@@ -295,33 +323,63 @@
 			{/each}
 		</div>
 	{:else}
-		<p class="py-8 text-center text-sm text-muted-foreground">{t('lyrics.none_found')}</p>
+		<div class="flex flex-col items-center gap-1.5 py-8 text-center">
+			<p class="text-sm text-muted-foreground">{t('lyrics.none_found')}</p>
+			{#if !compact && track}
+				<p class="max-w-64 text-xs text-muted-foreground/80">{t('lyrics.none_found_hint')}</p>
+				<button
+					onclick={() => (pickerOpen = true)}
+					class="mt-2 flex cursor-pointer items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium transition-colors hover:bg-foreground/5"
+				>
+					<HugeiconsIcon icon={Search01Icon} class="h-3.5 w-3.5" />
+					{t('lyrics.find')}
+				</button>
+			{/if}
+		</div>
 	{/if}
 </div>
-{#if lyrics && !loading && !compact}
-	<div class="flex items-center gap-2 border-t px-4 py-1.5 text-xs text-muted-foreground">
-		<p class="min-w-0 flex-1 truncate py-0.5">
-			{lyrics.source.startsWith('Source:')
-				? lyrics.source
-				: t('lyrics.source', { source: lyrics.source })}
-		</p>
-		<!-- Only on lyrics that have something to romanize, so it never sits there dead on an
-		     English song. The mini player has no footer and follows whatever was chosen here. -->
+{#if track && !loading && !compact}
+	<div class="flex items-center gap-1 border-t px-4 py-1.5 text-xs text-muted-foreground">
+		<!-- The source is the switch (#23): a popover with every provider's answer for this song. -->
+		<div class="flex min-w-0 flex-1">
+			<LyricsSourcePicker {lyrics} {track} bind:open={pickerOpen} onchange={onPicked} />
+		</div>
+		<!-- Each only on lyrics that have something for it, so neither sits there dead. The mini
+		     player has no footer and follows whatever was chosen here. -->
+		{#if canTranslate}
+			{@render prefToggle(
+				'translated',
+				showTranslation,
+				TranslateIcon,
+				t('lyrics.translation'),
+				t('lyrics.translation_hint')
+			)}
+		{/if}
 		{#if canRomanize}
-			<button
-				onclick={toggleRomanized}
-				class="flex shrink-0 cursor-pointer items-center gap-1.5 rounded-full px-2 py-0.5 transition-colors hover:bg-foreground/10 {showRomanized
-					? 'text-primary'
-					: 'hover:text-foreground'}"
-				aria-pressed={showRomanized}
-				title={t('lyrics.romanize_hint')}
-			>
-				<HugeiconsIcon icon={CharacterPhoneticIcon} class="h-3.5 w-3.5" />
-				{t('lyrics.romanize')}
-			</button>
+			{@render prefToggle(
+				'romanized',
+				showRomanized,
+				CharacterPhoneticIcon,
+				t('lyrics.romanize'),
+				t('lyrics.romanize_hint')
+			)}
 		{/if}
 	</div>
 {/if}
+
+{#snippet prefToggle(pref: Pref, on: boolean, icon: typeof TranslateIcon, label: string, hint: string)}
+	<button
+		onclick={() => toggle(pref)}
+		class="flex shrink-0 cursor-pointer items-center gap-1.5 rounded-full px-2 py-0.5 transition-colors hover:bg-foreground/10 {on
+			? 'text-primary'
+			: 'hover:text-foreground'}"
+		aria-pressed={on}
+		title={hint}
+	>
+		<HugeiconsIcon {icon} class="h-3.5 w-3.5" />
+		{label}
+	</button>
+{/snippet}
 
 <!-- Word-by-word karaoke sweep (Better Lyrics style), for the line and for Apple's timed
      romanization under it. -->

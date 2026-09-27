@@ -8,6 +8,8 @@ export const ITEM_MIME = 'application/x-limusic-item';
 export const QUEUE_ROW_MIME = 'application/x-limusic-queue-row';
 /** A home section being reordered in the Edit home panel (`HomeLayoutDialog`). */
 export const SECTION_ROW_MIME = 'application/x-limusic-section-row';
+/** A lyrics provider being reordered in Settings (`LyricsSourcesSettings`). */
+export const LYRICS_SOURCE_MIME = 'application/x-limusic-lyrics-source';
 
 export function setDragItem(e: DragEvent, item: BrowseItem): void {
 	e.dataTransfer?.setData(ITEM_MIME, JSON.stringify(item));

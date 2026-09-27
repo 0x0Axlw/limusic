@@ -6,6 +6,12 @@ use std::sync::Mutex;
 use md5::{Digest, Md5};
 use rusqlite::Connection;
 
+/// Clearing the lyrics cache spares songs whose source was picked by hand in the lyrics footer (or
+/// their timing nudged): those are the user's choices, not a cache.
+// ponytail: the pin lives in the lyrics JSON rather than a column, it is read nowhere else.
+const CLEAR_LYRICS: &str =
+    "DELETE FROM lyrics_cache WHERE lyrics IS NULL OR json_extract(lyrics, '$.pinned') IS NOT 1";
+
 pub struct Db(Mutex<Connection>);
 
 /// The stored-account key (multi-account support): a stable per-Google-account identifier derived
@@ -271,6 +277,19 @@ impl Db {
                 [],
             );
             let _ = conn.execute_batch("PRAGMA user_version = 1");
+        }
+        // v1.0.0: the Boidu switch became one entry in an ordered provider list, and word-timed
+        // providers joined the head of it. Boidu turned off carries over as `-boidu`. Cached hits
+        // never expire, so without a purge no song already played would ever reach the new ones.
+        if version < 2 {
+            let _ = conn.execute(
+                "INSERT OR IGNORE INTO settings(key, value) SELECT 'lyrics_providers', '-boidu'
+                    FROM settings WHERE key = 'lyrics_boidu' AND value = 'false'",
+                [],
+            );
+            let _ = conn.execute("DELETE FROM settings WHERE key = 'lyrics_boidu'", []);
+            let _ = conn.execute("DELETE FROM lyrics_cache", []);
+            let _ = conn.execute_batch("PRAGMA user_version = 2");
         }
         // One-time migration of the pre-multi-account single session into `accounts`. The legacy
         // settings rows stay in place as projections of the active account (see `StoredAccount`).
@@ -677,7 +696,7 @@ impl Db {
     pub fn clear_stream_cache(&self) {
         let conn = self.0.lock().unwrap();
         let _ = conn.execute("DELETE FROM stream_url_cache", []);
-        let _ = conn.execute("DELETE FROM lyrics_cache", []);
+        let _ = conn.execute(CLEAR_LYRICS, []);
     }
 
     /// Drop cached lyrics only, leaving stream URLs alone. Changing which providers are allowed
@@ -685,7 +704,13 @@ impl Db {
     /// on every track whose lyrics were already fetched (cache hits never expire).
     pub fn clear_lyrics_cache(&self) {
         let conn = self.0.lock().unwrap();
-        let _ = conn.execute("DELETE FROM lyrics_cache", []);
+        let _ = conn.execute(CLEAR_LYRICS, []);
+    }
+
+    /// Forget one song's lyrics, a hand-picked source included.
+    pub fn delete_lyrics(&self, video_id: &str) {
+        let conn = self.0.lock().unwrap();
+        let _ = conn.execute("DELETE FROM lyrics_cache WHERE video_id = ?1", [video_id]);
     }
 
     // --- lyrics cache -----------------------------------------------------------------------
@@ -1313,6 +1338,40 @@ mod tests {
             vec![("{\"yt\":1}".to_string(), 1)],
             "only the YouTube play survives"
         );
+        drop(d);
+        std::fs::remove_file(&path).ok();
+    }
+
+    /// v1.0.0: Boidu switched off carries over as the first entry of the provider order, the
+    /// cache is purged once, and from then on clearing it spares hand-picked lyrics.
+    #[test]
+    fn opening_the_db_migrates_the_boidu_switch_and_pins_survive_clears() {
+        let path = std::env::temp_dir().join("limusic-lyrics-providers-test.sqlite");
+        std::fs::remove_file(&path).ok();
+        {
+            let d = Db::open(&path).unwrap();
+            let conn = d.0.lock().unwrap();
+            conn.execute_batch("PRAGMA user_version = 1").unwrap();
+            conn.execute("INSERT INTO settings(key, value) VALUES('lyrics_boidu', 'false')", [])
+                .unwrap();
+            conn.execute(
+                "INSERT INTO lyrics_cache VALUES('old', '{\"source\":\"LRCLIB\"}', 1)",
+                [],
+            )
+            .unwrap();
+        }
+        let d = Db::open(&path).unwrap();
+        assert_eq!(d.get_setting("lyrics_providers").as_deref(), Some("-boidu"));
+        assert_eq!(d.get_setting("lyrics_boidu"), None);
+        assert_eq!(d.get_lyrics("old", 2, 10), None, "purged once");
+
+        d.put_lyrics("auto", Some("{\"source\":\"LRCLIB\"}"), 2);
+        d.put_lyrics("picked", Some("{\"source\":\"Kugou\",\"pinned\":true}"), 2);
+        d.put_lyrics("miss", None, 2);
+        d.clear_lyrics_cache();
+        assert_eq!(d.get_lyrics("auto", 2, 10), None);
+        assert_eq!(d.get_lyrics("miss", 2, 10), None);
+        assert!(d.get_lyrics("picked", 2, 10).is_some(), "a hand-picked source is not a cache");
         drop(d);
         std::fs::remove_file(&path).ok();
     }

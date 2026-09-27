@@ -1119,6 +1119,7 @@ export const ui = $state({
 	share: null as BrowseItem | null, // the share modal's target
 	toast: null as Toast | null,
 	settingsOpen: false, // the settings modal
+	settingsFocus: null as 'lyrics' | null, // a section to open settings on, once
 	ltOpen: false, // the Listen Together modal
 	linkOpen: false, // the "open a pasted link" modal
 	paletteOpen: false, // the Ctrl+K search palette
