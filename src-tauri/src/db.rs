@@ -260,6 +260,18 @@ impl Db {
         // built up before anything pruned at all (1803 rows, 1772 of them expired, on a real
         // install) would sit there until it happened to.
         let _ = conn.execute("DELETE FROM stream_url_cache WHERE expires_at <= ?1", [now_secs()]);
+        // #329 put LRCLIB's search ahead of Netease, QQ and Kugou, but cached hits never expire, so
+        // every track they already answered would keep their lyrics. Drop those once; the next
+        // play asks the chain again. `user_version` is the once-marker, unused before this.
+        let version: i64 = conn.query_row("PRAGMA user_version", [], |r| r.get(0)).unwrap_or(0);
+        if version < 1 {
+            let _ = conn.execute(
+                "DELETE FROM lyrics_cache WHERE json_extract(lyrics, '$.source')
+                    IN ('Netease Cloud Music', 'QQ Music', 'Kugou')",
+                [],
+            );
+            let _ = conn.execute_batch("PRAGMA user_version = 1");
+        }
         // One-time migration of the pre-multi-account single session into `accounts`. The legacy
         // settings rows stay in place as projections of the active account (see `StoredAccount`).
         let legacy_cookie = conn

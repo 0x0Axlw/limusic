@@ -339,22 +339,48 @@ async fn lrclib_get(req: &LyricsRequest) -> Result<Option<LrclibTrack>, reqwest:
 }
 
 /// `/api/search`: fuzzy fallback. The title and artist fields first, then free text when those find
-/// nothing synced (#329). A YouTube Music title often carries more than LRCLIB's track name ("Bad
-/// Apple!! (Lizz Robinett English Cover)" matches no track, `q` finds it), and an artist in native
-/// script (容祖兒) misses the synced copies filed under the romanized name. Free text only with a
-/// known length: it is the looser match, and the ±5s window is what keeps it on the right song.
+/// nothing synced (#329): the tidied title with the artist, then without. Free text wants every
+/// word to match, so one stray word sinks it, and YouTube supplies plenty. A lyric video arrives as
+/// "Bad Apple／ Lizz Robinett (English Cover) | Lyrics/Lyric Video [English]" with the uploading
+/// channel ("Lyrics Radio") as the artist; only the bare "Bad Apple／ Lizz Robinett" finds it. An
+/// artist in native script (容祖兒) also misses the synced copies filed under the romanized name.
+/// Free text only with a known length: it is the looser match, and the ±5s window is what keeps it
+/// on the right song.
 async fn lrclib_search(req: &LyricsRequest) -> Result<Option<LrclibTrack>, reqwest::Error> {
     let fields = [("track_name", req.title.as_str()), ("artist_name", req.artists.as_str())];
-    let hit = lrclib_search_by(req, &fields).await?;
-    if hit.as_ref().is_some_and(LrclibTrack::has_synced) || req.duration.is_none_or(|d| d <= 0.0) {
+    let mut hit = lrclib_search_by(req, &fields).await?;
+    let title = search_title(&req.title);
+    if hit.as_ref().is_some_and(LrclibTrack::has_synced)
+        || req.duration.is_none_or(|d| d <= 0.0)
+        || title.is_empty()
+    {
         return Ok(hit);
     }
-    let q = format!("{} {}", req.title, req.artists);
-    Ok(match lrclib_search_by(req, &[("q", q.as_str())]).await {
-        Ok(Some(t)) if t.has_synced() => Some(t),
-        Ok(free) => hit.or(free),
-        Err(_) => hit,
-    })
+    for q in [format!("{title} {}", req.artists), title] {
+        match lrclib_search_by(req, &[("q", q.as_str())]).await {
+            Ok(Some(t)) if t.has_synced() => return Ok(Some(t)),
+            Ok(free) => hit = hit.or(free),
+            Err(_) => {}
+        }
+    }
+    Ok(hit)
+}
+
+/// A YouTube title without what no lyrics catalogue files a song under: everything after a `|`
+/// and every bracketed aside, "(Official Video)", "[English]", "【MV】" alike.
+fn search_title(title: &str) -> String {
+    let title = title.split('|').next().unwrap_or_default();
+    let mut depth = 0u32;
+    let mut out = String::new();
+    for c in title.chars() {
+        match c {
+            '(' | '[' | '【' | '（' => depth += 1,
+            ')' | ']' | '】' | '）' => depth = depth.saturating_sub(1),
+            _ if depth == 0 => out.push(c),
+            _ => {}
+        }
+    }
+    out.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
 /// One `/api/search` call. Prefers a synced candidate whose duration is within ±5s of ours (when
@@ -1370,6 +1396,19 @@ mod tests {
     }
 
     #[test]
+    fn search_title_drops_asides_and_suffixes() {
+        assert_eq!(
+            search_title(
+                "Bad Apple／ Lizz Robinett (English Cover) | Lyrics/Lyric Video [English]"
+            ),
+            "Bad Apple／ Lizz Robinett"
+        );
+        assert_eq!(search_title("【MV】 我的驕傲 （Official Video）"), "我的驕傲");
+        assert_eq!(search_title("Shape of You"), "Shape of You");
+        assert_eq!(search_title("(Intro)"), "");
+    }
+
+    #[test]
     fn lrc_mux_combines_lines_and_word_sources() {
         let primary = vec![LyricLine::simple(Some(10000), "Hello world".into())];
         let word_source = vec![LyricLine {
@@ -1440,15 +1479,24 @@ mod tests {
         let boidu = boidu_get(&req).await.unwrap().expect("Boidu hit");
         assert!(boidu.lines.iter().any(|l| l.words.is_some()));
 
-        // #329: this title matches no LRCLIB track name, so only the free-text retry finds it.
-        let cover = LyricsRequest {
-            video_id: "test".into(),
-            title: "Bad Apple!! (Lizz Robinett English Cover)".into(),
-            artists: "Lizz Robinett".into(),
-            album: None,
-            duration: Some(283.0),
-        };
-        let hit = lrclib_search(&cover).await.unwrap().expect("LRCLIB free-text hit");
-        assert!(hit.has_synced());
+        // #329: neither title matches an LRCLIB track name, so only the free-text retries find
+        // them. The second is what YouTube Music actually sends for a fan lyric video.
+        for (title, artists) in [
+            ("Bad Apple!! (Lizz Robinett English Cover)", "Lizz Robinett"),
+            (
+                "Bad Apple／ Lizz Robinett (English Cover) | Lyrics/Lyric Video [English]",
+                "Lyrics Radio",
+            ),
+        ] {
+            let cover = LyricsRequest {
+                video_id: "test".into(),
+                title: title.into(),
+                artists: artists.into(),
+                album: None,
+                duration: Some(283.0),
+            };
+            let hit = lrclib_search(&cover).await.unwrap().expect("LRCLIB free-text hit");
+            assert!(hit.has_synced(), "{title}");
+        }
     }
 }
