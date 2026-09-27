@@ -6,7 +6,8 @@
 	import {
 		CheckmarkCircle02Icon,
 		AlertCircleIcon,
-		InformationCircleIcon
+		InformationCircleIcon,
+		Cancel01Icon
 	} from '@hugeicons/core-free-icons';
 	import { browser } from '$app/environment';
 	import { onMount } from 'svelte';
@@ -242,11 +243,15 @@
 				<Button size="sm" onclick={openDownloadPage}>{t('settings.about.download_page')}</Button>
 			{/if}
 			{#if !updateState.installing}
-				<button
-					class="text-muted-foreground hover:text-foreground"
+				<Button
+					variant="ghost"
+					size="icon-sm"
+					class="-mr-2 text-muted-foreground hover:text-foreground"
 					aria-label={t('common.close')}
-					onclick={() => (updateState.available = null)}>✕</button
+					onclick={() => (updateState.available = null)}
 				>
+					<HugeiconsIcon icon={Cancel01Icon} strokeWidth={2} />
+				</Button>
 			{/if}
 		</div>
 	{/if}
