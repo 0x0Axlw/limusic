@@ -7,10 +7,11 @@
 //!    what Metrolist defaults to.
 //! 3. **YouTube Music timed** — `next(videoId)` → lyrics browseId → mobile-client browse
 //!    (`timedLyricsData`). The same real-time lyrics the YTM app shows.
-//! 4. **Netease / QQ / Kugou** → synced LRC, plus translations from Netease. Search hits are
+//! 4. **LRCLIB** `/api/search` (fuzzy) → synced only; its plain text waits for step 6.
+//! 5. **Netease / QQ / Kugou** → synced LRC, plus translations from Netease. Search hits are
 //!    matched on length (`best_by_duration`); these catalogues rank remixes next to originals.
-//! 5. Plain fallbacks: LRCLIB fuzzy search → LRCLIB plain (from step 2's response) → YT plain
-//!    (WEB_REMIX browse) → the fuzzy search's plain text.
+//! 6. Plain fallbacks: LRCLIB plain (from step 2's response) → YT plain (WEB_REMIX browse) →
+//!    the fuzzy search's plain text.
 //!
 //! Results are cached in SQLite (`lyrics_cache`): hits forever, "no lyrics" verdicts for 24h.
 //! A run where every provider merely *errored* (offline) caches nothing, so lyrics come back
@@ -225,23 +226,10 @@ async fn fetch(state: &AppState, mut req: LyricsRequest) -> (Option<Lyrics>, boo
         }
     }
 
-    // 4. Netease Cloud Music provider (synced + word timestamps + translations)
-    if let Ok(Some(l)) = netease_get(req).await {
-        return (Some(l), req.duration.is_some());
-    }
-
-    // 5. QQ Music provider
-    if let Ok(Some(l)) = qqmusic_get(req).await {
-        return (Some(l), req.duration.is_some());
-    }
-
-    // 6. Kugou provider
-    if let Ok(Some(l)) = kugou_get(req).await {
-        return (Some(l), req.duration.is_some());
-    }
-
-    // 3. LRCLIB fuzzy search — a synced fuzzy match still beats any plain text, so it outranks
-    //    the plain tier below. (YT lyrics are region-licensed and can be entirely absent.)
+    // 4. LRCLIB fuzzy search: a synced fuzzy match still beats any plain text, so it outranks
+    //    the plain tier below. (YT lyrics are region-licensed and can be entirely absent.) Ahead
+    //    of the three below too (#329): their matches are just as fuzzy, and they serve Cantonese
+    //    lyrics in Simplified Chinese and paste Chinese translations under English ones.
     let searched = lrclib_search(req).await;
     if let Ok(hit) = &searched {
         definitive = true;
@@ -250,16 +238,31 @@ async fn fetch(state: &AppState, mut req: LyricsRequest) -> (Option<Lyrics>, boo
         }
     }
 
+    // 5a. Netease Cloud Music provider (synced + word timestamps + translations)
+    if let Ok(Some(l)) = netease_get(req).await {
+        return (Some(l), req.duration.is_some());
+    }
+
+    // 5b. QQ Music provider
+    if let Ok(Some(l)) = qqmusic_get(req).await {
+        return (Some(l), req.duration.is_some());
+    }
+
+    // 5c. Kugou provider
+    if let Ok(Some(l)) = kugou_get(req).await {
+        return (Some(l), req.duration.is_some());
+    }
+
     // --- plain tier -------------------------------------------------------------------------
 
-    // 4a. Plain from LRCLIB's exact match.
+    // 6a. Plain from LRCLIB's exact match.
     if let Ok(Some(hit)) = &lr {
         if let Some(l) = plain_from_text(hit.plain_lyrics.as_deref(), "LRCLIB") {
             return (Some(l), req.duration.is_some());
         }
     }
 
-    // 4b. Plain from YT (WEB_REMIX).
+    // 6b. Plain from YT (WEB_REMIX).
     if let Some(bid) = &browse_id {
         if let Some(client) = state.clients.get(innertube::METADATA_CLIENT) {
             match state.it.lyrics_plain(client, bid).await {
@@ -276,7 +279,7 @@ async fn fetch(state: &AppState, mut req: LyricsRequest) -> (Option<Lyrics>, boo
         }
     }
 
-    // 4c. Plain from the fuzzy search.
+    // 6c. Plain from the fuzzy search.
     if let Ok(Some(hit)) = &searched {
         if let Some(l) = lrclib_to_lyrics(hit) {
             return (Some(l), req.duration.is_some());
@@ -299,6 +302,12 @@ struct LrclibTrack {
     synced_lyrics: Option<String>,
     #[serde(default)]
     duration: Option<f64>,
+}
+
+impl LrclibTrack {
+    fn has_synced(&self) -> bool {
+        self.synced_lyrics.as_deref().is_some_and(|s| !s.trim().is_empty())
+    }
 }
 
 /// LRCLIB asks integrations to identify themselves via User-Agent.
@@ -329,12 +338,33 @@ async fn lrclib_get(req: &LyricsRequest) -> Result<Option<LrclibTrack>, reqwest:
     Ok(Some(resp.error_for_status()?.json().await?))
 }
 
-/// `/api/search`: fuzzy fallback. Prefers a synced candidate whose duration is within ±5s of
-/// ours (when known); returns the best or `Ok(None)`.
+/// `/api/search`: fuzzy fallback. The title and artist fields first, then free text when those find
+/// nothing synced (#329). A YouTube Music title often carries more than LRCLIB's track name ("Bad
+/// Apple!! (Lizz Robinett English Cover)" matches no track, `q` finds it), and an artist in native
+/// script (容祖兒) misses the synced copies filed under the romanized name. Free text only with a
+/// known length: it is the looser match, and the ±5s window is what keeps it on the right song.
 async fn lrclib_search(req: &LyricsRequest) -> Result<Option<LrclibTrack>, reqwest::Error> {
-    let q = [("track_name", req.title.as_str()), ("artist_name", req.artists.as_str())];
+    let fields = [("track_name", req.title.as_str()), ("artist_name", req.artists.as_str())];
+    let hit = lrclib_search_by(req, &fields).await?;
+    if hit.as_ref().is_some_and(LrclibTrack::has_synced) || req.duration.is_none_or(|d| d <= 0.0) {
+        return Ok(hit);
+    }
+    let q = format!("{} {}", req.title, req.artists);
+    Ok(match lrclib_search_by(req, &[("q", q.as_str())]).await {
+        Ok(Some(t)) if t.has_synced() => Some(t),
+        Ok(free) => hit.or(free),
+        Err(_) => hit,
+    })
+}
+
+/// One `/api/search` call. Prefers a synced candidate whose duration is within ±5s of ours (when
+/// known); returns the best or `Ok(None)`.
+async fn lrclib_search_by(
+    req: &LyricsRequest,
+    q: &[(&str, &str)],
+) -> Result<Option<LrclibTrack>, reqwest::Error> {
     let list: Vec<LrclibTrack> = get(format!("{LRCLIB_ROOT}/search"))
-        .query(&q)
+        .query(q)
         .send()
         .await?
         .error_for_status()?
@@ -347,7 +377,6 @@ async fn lrclib_search(req: &LyricsRequest) -> Result<Option<LrclibTrack>, reqwe
         _ => f64::INFINITY,
     };
     let close = |t: &LrclibTrack| ours.is_none() || dist(t) <= 5.0;
-    let synced = |t: &LrclibTrack| t.synced_lyrics.as_deref().is_some_and(|s| !s.trim().is_empty());
     // Prefer the synced candidate whose duration is CLOSEST to ours — LRCLIB carries multiple
     // cuts of popular tracks, and a 4s-different cut plays lyrics 4s off the audio.
     let mut best_synced: Option<(f64, LrclibTrack)> = None;
@@ -356,7 +385,7 @@ async fn lrclib_search(req: &LyricsRequest) -> Result<Option<LrclibTrack>, reqwe
         if !close(&t) {
             continue;
         }
-        if synced(&t) {
+        if t.has_synced() {
             let d = dist(&t);
             if best_synced.as_ref().is_none_or(|(bd, _)| d < *bd) {
                 best_synced = Some((d, t));
@@ -1357,7 +1386,7 @@ mod tests {
         assert_eq!(muxed[0].translation.as_deref(), Some("Halo dunia"));
     }
 
-    /// Are the external providers still alive? Hits all four for real, so it is NOT in the default
+    /// Are the external providers still alive? Hits them all for real, so it is NOT in the default
     /// run (context/17: network tests are opt-in, or `cargo test` fails offline):
     ///   cargo test -p limusic-app --lib -- --ignored --nocapture
     ///
@@ -1373,7 +1402,7 @@ mod tests {
     /// `total: 0` to everything for a while rather than returning an error. A provider that is
     /// genuinely dead prints "no hit" on every track you try, run after run.
     #[tokio::test]
-    #[ignore = "hits four live lyrics APIs"]
+    #[ignore = "hits five live lyrics APIs"]
     async fn providers_are_alive() {
         let req = LyricsRequest {
             video_id: "test".into(),
@@ -1410,5 +1439,16 @@ mod tests {
         // provider's 8s timeout and fail the run.
         let boidu = boidu_get(&req).await.unwrap().expect("Boidu hit");
         assert!(boidu.lines.iter().any(|l| l.words.is_some()));
+
+        // #329: this title matches no LRCLIB track name, so only the free-text retry finds it.
+        let cover = LyricsRequest {
+            video_id: "test".into(),
+            title: "Bad Apple!! (Lizz Robinett English Cover)".into(),
+            artists: "Lizz Robinett".into(),
+            album: None,
+            duration: Some(283.0),
+        };
+        let hit = lrclib_search(&cover).await.unwrap().expect("LRCLIB free-text hit");
+        assert!(hit.has_synced());
     }
 }
