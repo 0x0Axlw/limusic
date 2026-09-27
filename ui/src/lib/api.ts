@@ -71,6 +71,7 @@ export interface NowPlaying {
 	artistRuns?: ArtistRun[];
 	thumbnail?: string;
 	duration?: string;
+	album?: string | null;
 	streamClient: string;
 	/** The user's rating of the track (null if unknown). */
 	rating?: Rating | null;

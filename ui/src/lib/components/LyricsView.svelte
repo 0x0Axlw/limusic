@@ -75,7 +75,7 @@
 			videoId: now.videoId,
 			title: now.title,
 			artists: now.artists,
-			album: playback.queue.items[playback.queue.currentIndex]?.album ?? undefined,
+			album: now.album ?? undefined,
 			duration: durationSecs(now.duration) ?? (playback.duration > 0 ? playback.duration : undefined)
 		};
 	});
@@ -101,13 +101,13 @@
 		const id = (requested = now.videoId);
 		loading = true;
 		lyrics = null;
-		// Album isn't in now-playing, but the queue item usually has it — better LRCLIB matching.
-		const album = playback.queue.items[playback.queue.currentIndex]?.album;
 		api.getLyrics({
 			videoId: id,
 			title: now.title,
 			artists: now.artists,
-			album: album ?? undefined,
+			// From now-playing, not the queue row: on a gapless advance the queue event lands after
+			// this one, and the previous song's album makes Boidu and LRCLIB miss.
+			album: now.album ?? undefined,
 			// The track's own length — NOT playback.duration, which still holds the previous
 			// track's value for a moment after a track change.
 			duration: durationSecs(now.duration)

@@ -2224,6 +2224,9 @@ impl AppState {
             "artistRuns": item.artist_runs,
             "thumbnail": item.thumbnail,
             "duration": item.duration,
+            // The lyrics fetch needs it on a gapless advance, where the queue event that would
+            // carry it lands after this one.
+            "album": item.album,
             "streamClient": stream_client,
             "rating": item.rating,
             // YouTube's own `musicVideoType` says this track is a video upload, not the generated
