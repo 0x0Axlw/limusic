@@ -13,6 +13,7 @@ export const MAX_PICKS = 18;
 export const MAX_PINS = 3;
 const MAX_RECENT = 100;
 const MAX_ARTISTS = 100;
+export const MAX_SEARCHES = 10;
 
 /**
   * A Shortcuts tile — always something the user added by hand. Array order in `picks` IS display
@@ -52,6 +53,8 @@ export type Personal = {
 	 */
 	dismissedSeeds: string[];
 	home: HomeLayout;
+	/** Queries run on the search page, newest first, at most MAX_SEARCHES. */
+	searches: string[];
 };
 
 export type CardSize = 'small' | 'medium' | 'large';
@@ -97,7 +100,8 @@ export function empty(): Personal {
 		recent: {},
 		artists: {},
 		dismissedSeeds: [],
-		home: defaultHome()
+		home: defaultHome(),
+		searches: []
 	};
 }
 
@@ -124,6 +128,9 @@ export function hydrate(raw: unknown): Personal {
 	if (o.artists && typeof o.artists === 'object') base.artists = o.artists;
 	if (Array.isArray(o.dismissedSeeds)) {
 		base.dismissedSeeds = o.dismissedSeeds.filter((id) => typeof id === 'string');
+	}
+	if (Array.isArray(o.searches)) {
+		base.searches = o.searches.filter((q) => typeof q === 'string').slice(0, MAX_SEARCHES);
 	}
 	if (o.home && typeof o.home === 'object') {
 		const h = o.home as Partial<HomeLayout>;
@@ -417,6 +424,24 @@ export function noteSections(p: Personal, titles: string[]): boolean {
 	if (!fresh.length) return false;
 	p.home.seen = [...fresh, ...p.home.seen].slice(0, MAX_SEEN);
 	return true;
+}
+
+// --- Recent searches ----------------------------------------------------------------------------
+
+/**
+ * Put a query at the front of the search history. The same words typed with different case or
+ * spacing are one search, kept as last typed. Returns false for a blank query, which writes nothing.
+ */
+export function noteSearch(p: Personal, query: string): boolean {
+	const q = query.trim().replace(/\s+/g, ' ');
+	if (!q) return false;
+	const key = q.toLowerCase();
+	p.searches = [q, ...p.searches.filter((s) => s.toLowerCase() !== key)].slice(0, MAX_SEARCHES);
+	return true;
+}
+
+export function forgetSearch(p: Personal, query: string): void {
+	p.searches = p.searches.filter((s) => s !== query);
 }
 
 // --- Recency + artist counts -------------------------------------------------------------------

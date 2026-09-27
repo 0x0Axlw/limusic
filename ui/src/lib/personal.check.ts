@@ -12,6 +12,7 @@ import {
 	arrangeSections,
 	empty,
 	firstArtist,
+	forgetSearch,
 	forgetIds,
 	freshen,
 	hiddenSections,
@@ -23,6 +24,8 @@ import {
 	markSynced,
 	mergeSaved,
 	noteRecent,
+	noteSearch,
+	MAX_SEARCHES,
 	noteSections,
 	orderLibrary,
 	placePick,
@@ -427,6 +430,24 @@ const range = (n: number, prefix: string) => Array.from({ length: n }, (_, i) =>
 	ok(p.home.seen.length === 40, 'capped');
 	ok(p.home.seen[0] === 'shelf 59', 'and it is the stalest that goes, not the newest');
 	ok(!p.home.seen.includes('Quick picks'), 'the first shelves ever seen have aged out');
+}
+
+// --- recent searches ------------------------------------------------------------------------------
+{
+	const p = empty();
+	ok(!noteSearch(p, '   '), 'a blank query is not a search');
+	noteSearch(p, 'radiohead');
+	noteSearch(p, 'daft punk');
+	noteSearch(p, '  RadioHead ');
+	ok(p.searches.join() === 'RadioHead,daft punk', 'a repeat moves to the front, as last typed');
+	noteSearch(p, 'lo   fi  beats');
+	ok(p.searches[0] === 'lo fi beats', 'runs of spaces collapse');
+	for (let i = 0; i < 30; i++) noteSearch(p, `q${i}`);
+	ok(p.searches.length === MAX_SEARCHES && p.searches[0] === 'q29', 'capped, newest kept');
+	forgetSearch(p, 'q29');
+	ok(p.searches[0] === 'q28', 'forgotten');
+	ok(hydrate({ searches: ['a', 3, 'b'] }).searches.join() === 'a,b', 'hydrate drops junk');
+	ok(hydrate({}).searches.length === 0, 'an older blob has none');
 }
 
 console.log('ok');

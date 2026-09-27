@@ -775,6 +775,8 @@ pub fn run() {
             commands::allow_font_file,
             commands::get_artist,
             commands::get_browse_grid,
+            commands::get_moods,
+            commands::get_mood_art,
             commands::play_playlist,
             commands::start_radio,
             commands::rate,

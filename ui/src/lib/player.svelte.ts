@@ -571,6 +571,19 @@ export function touchPick(id: string) {
 	if (pl.touchPick(personal, id)) savePersonal();
 }
 
+/** The search page's history: a query it ran, one the user took out, or all of them. */
+export function noteSearch(query: string) {
+	if (pl.noteSearch(personal, query)) savePersonal();
+}
+export function forgetSearch(query: string) {
+	pl.forgetSearch(personal, query);
+	savePersonal();
+}
+export function clearSearches() {
+	personal.searches = [];
+	savePersonal();
+}
+
 /**
  * Save a playlist/album/artist to the library from this machine, or take it back out. Returns the
  * new state. Not account-scoped and never cleared on sign-in: what a signed-out user saved is still

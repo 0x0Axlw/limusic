@@ -4,8 +4,8 @@
 use std::sync::Arc;
 
 use innertube::{
-    AlbumPage, ArtistPage, BrowseItem, HistoryGroup, HomePage, PlaylistContinuation, PlaylistPage,
-    PlaylistSort, Rating, SearchResults, SongItem,
+    AlbumPage, ArtistPage, BrowseItem, HistoryGroup, HomePage, MoodSection, PlaylistContinuation,
+    PlaylistPage, PlaylistSort, Rating, SearchResults, SongItem,
 };
 use tauri::{Emitter, State};
 
@@ -883,6 +883,39 @@ pub async fn get_artist(state: St<'_>, id: String) -> Result<ArtistPage, String>
     let client = metadata_client(&state)?;
     state.it.artist(client, &id).await.map_err(|e| e.to_string())
 }
+
+/// Moods & Genres, the tiles the search page opens on.
+#[tauri::command]
+pub async fn get_moods(state: St<'_>) -> Result<Vec<MoodSection>, String> {
+    let client = metadata_client(&state)?;
+    state.it.moods(client).await.map_err(|e| e.to_string())
+}
+
+/// A cover for each Moods & Genres tile, which YouTube draws as a coloured button with no art: the
+/// first playlist in that tile's category. Six categories at a time. A tile whose category fails
+/// or comes back empty is left out, and the page draws it without art. The page keeps what comes
+/// back, so this runs once per tile, not once per visit.
+#[tauri::command]
+pub async fn get_mood_art(
+    state: St<'_>,
+    params: Vec<String>,
+) -> Result<std::collections::HashMap<String, String>, String> {
+    use futures_util::StreamExt;
+    let client = metadata_client(&state)?;
+    let it = &state.it;
+    Ok(futures_util::stream::iter(params)
+        .map(|p| async move {
+            let items = it.browse_grid(client, MOODS_CATEGORY_ID, Some(&p)).await.ok()?;
+            Some((p, items.into_iter().find_map(|i| i.thumbnail)?))
+        })
+        .buffer_unordered(6)
+        .filter_map(|art| async move { art })
+        .collect()
+        .await)
+}
+
+/// The browseId every Moods & Genres tile opens with its own `params`.
+const MOODS_CATEGORY_ID: &str = "FEmusic_moods_and_genres_category";
 
 /// A card grid reached from a carousel's "More" button (e.g. an artist's full albums list).
 #[tauri::command]

@@ -88,6 +88,12 @@
 		"top_result": "Top result",
 		"all_results_for": "All results for “{query}”"
 	},
+	"search": {
+		"recent": "Recent searches",
+		"clear_recent": "Clear",
+		"forget": "Remove “{query}” from recent searches",
+		"filters": "Result types"
+	},
 	"errors": {
 		"unreachable": "Can't reach YouTube Music. Check your connection.",
 		"offline_title": "No connection",

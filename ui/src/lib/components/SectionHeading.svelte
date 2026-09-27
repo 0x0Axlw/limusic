@@ -9,12 +9,13 @@
 	import { HugeiconsIcon, type IconSvgElement } from '@hugeicons/svelte';
 	import { ArrowRight01Icon } from '@hugeicons/core-free-icons';
 	import type { Snippet } from 'svelte';
+	import { t } from '$lib/i18n.svelte';
 
 	let {
 		title,
 		icon,
 		onMore,
-		moreLabel = 'See all',
+		moreLabel,
 		children
 	}: {
 		title: string;
@@ -26,6 +27,7 @@
 		/** Controls at the far end, before "See all". */
 		children?: Snippet;
 	} = $props();
+	const more = $derived(moreLabel ?? t('common.see_all'));
 </script>
 
 <div class="mb-4 flex items-center gap-2.5">
@@ -37,7 +39,7 @@
 		{/key}
 	{/if}
 	{#if onMore}
-		<button class="min-w-0 cursor-pointer text-left" onclick={onMore} title="{moreLabel} {title}">
+		<button class="min-w-0 cursor-pointer text-left" onclick={onMore} title="{more} {title}">
 			<h2 class="truncate font-heading text-xl font-bold tracking-tight hover:underline">{title}</h2>
 		</button>
 	{:else}
@@ -50,7 +52,7 @@
 			class="flex shrink-0 cursor-pointer items-center gap-0.5 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
 			onclick={onMore}
 		>
-			{moreLabel}
+			{more}
 			<HugeiconsIcon icon={ArrowRight01Icon} class="h-3.5 w-3.5" />
 		</button>
 	{/if}

@@ -609,6 +609,22 @@ export const startRadio = (kind: 'song' | 'artist' | 'album' | 'playlist', id: s
 	invoke<void>('start_radio', { kind, id, name });
 export const getAlbum = (id: string) => invoke<AlbumPage>('get_album', { id });
 export const getArtist = (id: string) => invoke<ArtistPage>('get_artist', { id });
+/** A Moods & Genres tile. `params` browses `MOODS_CATEGORY_ID` into that mood's playlists. */
+export interface Mood {
+	title: string;
+	params: string;
+	/** YouTube's own colour for the tile, `#rrggbb`. */
+	color: string;
+}
+export interface MoodSection {
+	title: string;
+	items: Mood[];
+}
+export const MOODS_CATEGORY_ID = 'FEmusic_moods_and_genres_category';
+export const getMoods = () => invoke<MoodSection[]>('get_moods');
+/** A cover per tile (the first playlist in its category), keyed by the tile's `params`. */
+export const getMoodArt = (params: string[]) =>
+	invoke<Record<string, string>>('get_mood_art', { params });
 export const getBrowseGrid = (id: string, params?: string) =>
 	invoke<BrowseItem[]>('get_browse_grid', { id, params });
 
