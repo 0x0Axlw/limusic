@@ -450,6 +450,12 @@ export const releaseNotes = () => invoke<ReleaseNote[]>('release_notes');
 /** False on Linux builds that aren't the AppImage (.rpm, the AUR package): they update through the
  *  package manager, so the UI offers a download link instead of an install button. */
 export const canSelfUpdate = () => invoke<boolean>('can_self_update');
+/** The updater plugin's `check()` against the beta channel's manifest, as the metadata the
+ *  plugin's `Update` class is built from. `null` when this build is what the channel offers. */
+export const checkBetaUpdate = () =>
+	invoke<ConstructorParameters<typeof import('@tauri-apps/plugin-updater').Update>[0] | null>(
+		'check_beta_update'
+	);
 /** Open an http(s) link in the real browser, never in the webview itself. */
 export const openExternal = (url: string) => invoke<void>('open_external', { url });
 

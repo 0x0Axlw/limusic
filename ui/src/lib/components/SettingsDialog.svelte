@@ -62,7 +62,8 @@
 		availableMessage,
 		checkForUpdatesInteractive,
 		installUpdate,
-		openDownloadPage
+		openDownloadPage,
+		recheckForUpdates
 	} from '$lib/updater.svelte';
 	import { getVersion } from '@tauri-apps/api/app';
 	import { t, setLocale, currentLocale, LOCALES } from '$lib/i18n.svelte';
@@ -207,6 +208,10 @@
 	let clearing = $state(false);
 	let version = $state('');
 	getVersion().then((v) => (version = v));
+	// Release candidates ship only what the updater installs, so an .rpm, .deb or AUR install has
+	// nothing to take from the beta channel. Shown in dev, which is never the AppImage either.
+	let betaAvailable = $state(import.meta.env.DEV);
+	api.canSelfUpdate().then((v) => (betaAvailable ||= v)).catch(() => {});
 	// Result of the last "Check for updates" click — shown inline (a toast renders behind the modal).
 	let updateResult = $state<{ message: string; error: boolean } | null>(null);
 
@@ -344,6 +349,7 @@
 	// Off by default: shuffle applies to the queue it was turned on for (issue #117).
 	const stickyShuffleOn = $derived(settings.sticky_shuffle === 'true');
 	const updateBannerOn = $derived(settings.update_banner !== 'false');
+	const betaOn = $derived(settings.update_channel === 'beta');
 	const trayOn = $derived(settings.close_to_tray !== 'false');
 	const autostartOn = $derived(settings.autostart === 'true');
 	// `native_chrome` is read-only and platform-derived (commands.rs). `overlay` is macOS, where the
@@ -435,6 +441,12 @@
 	async function setUpdateBanner(on: boolean) {
 		settings.update_banner = on ? 'true' : 'false';
 		await api.setSetting('update_banner', settings.update_banner);
+	}
+
+	async function setBeta(on: boolean) {
+		settings.update_channel = on ? 'beta' : 'stable';
+		await api.setSetting('update_channel', settings.update_channel);
+		await recheckForUpdates();
 	}
 
 	async function setTray(on: boolean) {
@@ -925,6 +937,14 @@
 									control: bannerSwitch,
 									tall: true
 								})}
+								{#if betaAvailable}
+									{@render row({
+										title: t('settings.about.beta'),
+										desc: t('settings.about.beta_hint'),
+										control: betaSwitch,
+										tall: true
+									})}
+								{/if}
 							</div>
 						</section>
 
@@ -1047,6 +1067,7 @@
 		onCheckedChange={setLastfmStrict}
 	/>{/snippet}
 {#snippet bannerSwitch()}<Switch checked={updateBannerOn} onCheckedChange={setUpdateBanner} />{/snippet}
+{#snippet betaSwitch()}<Switch checked={betaOn} onCheckedChange={setBeta} />{/snippet}
 {#snippet openPlayerSwitch()}<Switch
 		checked={appearance.openPlayerOnPlay}
 		onCheckedChange={(on) => setAppearance({ openPlayerOnPlay: on })}

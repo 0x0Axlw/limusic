@@ -214,7 +214,7 @@ pub async fn get_queue(state: St<'_>) -> Result<serde_json::Value, String> {
 /// `visitor_data`) and internal blobs (`queue_json`, `queue_index`, `queue_position`) never cross
 /// into the webview: they'd otherwise ship the login credential to the renderer on every open, and
 /// the webview can't overwrite them either.
-const UI_SETTINGS: [&str; 23] = [
+const UI_SETTINGS: [&str; 24] = [
     "volume",
     "proxy",
     "quality",
@@ -229,6 +229,7 @@ const UI_SETTINGS: [&str; 23] = [
     "hide_videos",
     "prevent_duplicates",
     "update_banner",
+    "update_channel",
     "lyrics_providers",
     "music_videos",
     "sticky_shuffle",
@@ -1824,6 +1825,56 @@ pub fn can_self_update(app: tauri::AppHandle) -> bool {
         let _ = app;
         true
     }
+}
+
+/// The beta channel's manifest. `beta` is a permanent prerelease holding nothing but this file, and
+/// the release workflows move it to the newest release candidate, or to the newest release once that
+/// is ahead, so the URL never changes.
+const BETA_MANIFEST: &str =
+    "https://github.com/SimoHypers/limusic/releases/download/beta/latest.json";
+
+/// What the updater plugin's own `check` command returns, so the UI can wrap it in the plugin's
+/// `Update` class and install it the usual way.
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BetaUpdate {
+    rid: tauri::ResourceId,
+    current_version: String,
+    version: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    body: Option<String>,
+    raw_json: serde_json::Value,
+}
+
+/// The updater plugin's `check()`, pointed at the beta manifest. The plugin takes its endpoint from
+/// tauri.conf.json and its JS `check` has no way to pass another, so this mirrors its `check`
+/// command (tauri-plugin-updater 2.10.1, `commands.rs`) with the endpoint swapped. The `Update` goes
+/// into the same resource table, which is what lets the plugin's `downloadAndInstall` find it.
+///
+/// Any different version counts, same as `allowDowngrades` on stable: the pointer only moves forward
+/// by itself, so a lower version there is a beta rollback somebody made on purpose.
+#[tauri::command]
+pub async fn check_beta_update(webview: tauri::Webview) -> Result<Option<BetaUpdate>, String> {
+    use tauri::Manager;
+    use tauri_plugin_updater::UpdaterExt;
+    let url = tauri::Url::parse(BETA_MANIFEST).map_err(|e| e.to_string())?;
+    let update = webview
+        .updater_builder()
+        .endpoints(vec![url])
+        .map_err(|e| e.to_string())?
+        .version_comparator(|current, remote| remote.version != current)
+        .build()
+        .map_err(|e| e.to_string())?
+        .check()
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(update.map(|u| BetaUpdate {
+        current_version: u.current_version.clone(),
+        version: u.version.clone(),
+        body: u.body.clone(),
+        raw_json: u.raw_json.clone(),
+        rid: webview.resources_table().add(u),
+    }))
 }
 
 /// Open a link from the UI in the real browser. An `<a href>` inside the webview would navigate

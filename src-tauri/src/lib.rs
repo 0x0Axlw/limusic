@@ -814,6 +814,7 @@ pub fn run() {
             commands::theater_fullscreen,
             commands::release_notes,
             commands::can_self_update,
+            commands::check_beta_update,
             commands::open_external,
             commands::diagnostics,
             commands::diagnostics_summary,

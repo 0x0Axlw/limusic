@@ -504,6 +504,8 @@
 			"update_packaged": "This build was installed with a package manager, update it the same way.",
 			"update_available": "Version {version} is available!",
 			"rollback_available": "This version is being rolled back to {version}, the last known-good release.",
+			"beta": "Beta versions",
+			"beta_hint": "Get new versions a few days early, before everyone else. They are tested less. Turning this off keeps the version you have until the next regular release passes it.",
 			"install_update": "Install and Restart",
 			"download_page": "Open download page",
 			"changelog": "Changelog & Release Notes",

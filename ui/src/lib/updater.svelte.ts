@@ -2,12 +2,13 @@
 // startup check is silent unless an update exists, the Settings check always reports a result.
 // Only self-updates the AppImage build on Linux (Tauri limitation) — .deb, .rpm and distro packages
 // update through their package manager, so they get a download link instead. See `canInstall`.
-import { check, type Update } from '@tauri-apps/plugin-updater';
+import { check, Update } from '@tauri-apps/plugin-updater';
 import { relaunch } from '@tauri-apps/plugin-process';
 import { toast } from './player.svelte';
 import { t } from './i18n.svelte';
 import { friendlyNetError } from './neterr';
-import { canSelfUpdate, getSettings, openExternal, releaseNotes } from './api';
+import { canSelfUpdate, checkBetaUpdate, getSettings, openExternal, releaseNotes } from './api';
+import { isNewer, isPrerelease } from './version';
 import { getVersion } from '@tauri-apps/api/app';
 
 const RELEASES_URL = 'https://github.com/SimoHypers/limusic/releases/latest';
@@ -27,40 +28,40 @@ export const updateState = $state({
 // The resolved handle to download; kept out of reactive state (it's not serializable/renderable).
 let pending: Update | null = null;
 
-/** `a` is a later release than `b`. Both are plain `x.y.z` from our own releases; anything that
- *  doesn't parse compares as not-newer, so a weird tag can never invent an update. */
-function isNewer(a: string, b: string): boolean {
-	const pa = a.split('.').map(Number);
-	const pb = b.split('.').map(Number);
-	for (let i = 0; i < 3; i++) {
-		const [x, y] = [pa[i] ?? 0, pb[i] ?? 0];
-		if (x !== y) return x > y;
-	}
-	return false;
-}
-
 async function look(): Promise<boolean> {
 	let u: Update | null;
+	const beta = (await getSettings()).update_channel === 'beta';
+	const current = await getVersion();
 	try {
-		// `allowDowngrades` is the rollback lever. Without it the plugin compares `remote > current`,
-		// so once a broken release installs itself there is no way back: marking an older release
-		// Latest moves nobody, and the only fix is shipping another release on top of the broken
-		// one. With it the plugin's own comparator becomes `remote != current` (tauri-plugin-updater
-		// 2.10.1, `commands.rs`), so whatever release is marked Latest is what every client
-		// converges on, newer or older. A rollback is `gh release edit <good-tag> --latest`, plus
-		// demoting the pulled release to a prerelease for the fallback below.
-		//
-		// It has to be armed in the release that might need rescuing, not the rescue: a build
-		// without it never takes a downgrade, so this only protects releases from 1.0.0 on.
-		//
-		// What makes it safe is that nothing moves until the owner moves Latest, and the release
-		// workflows only flip Latest once all three platforms are in its latest.json, so Latest is
-		// always a complete, signed release. Once a client is on it, `remote != current` is false
-		// and it stays put: no loop. The side effect is that any build AHEAD of Latest is offered
-		// Latest as a rollback: a dev build after the version bump, or a prerelease if we ever
-		// publish one. The first only costs a banner in dev. The second would offer every prerelease
-		// tester a downgrade to stable, so publishing prereleases means revisiting this.
-		u = await check({ allowDowngrades: true });
+		if (beta) {
+			// The beta pointer, through the same plugin: see `check_beta_update` in commands.rs.
+			const meta = await checkBetaUpdate();
+			u = meta && new Update(meta);
+		} else {
+			// `allowDowngrades` is the rollback lever. Without it the plugin compares
+			// `remote > current`, so once a broken release installs itself there is no way back:
+			// marking an older release Latest moves nobody, and the only fix is shipping another
+			// release on top of the broken one. With it the plugin's own comparator becomes
+			// `remote != current` (tauri-plugin-updater 2.10.1, `commands.rs`), so whatever release is
+			// marked Latest is what every client converges on, newer or older. A rollback is
+			// `gh release edit <good-tag> --latest`, plus demoting the pulled release to a prerelease
+			// for the fallback below.
+			//
+			// It has to be armed in the release that might need rescuing, not the rescue: a build
+			// without it never takes a downgrade, so this only protects releases from 1.0.0 on.
+			//
+			// What makes it safe is that nothing moves until the owner moves Latest, and the release
+			// workflows only flip Latest once all three platforms are in its latest.json, so Latest is
+			// always a complete, signed release. Once a client is on it, `remote != current` is false
+			// and it stays put: no loop.
+			//
+			// Not on a prerelease build. That is someone who left the beta channel while on an RC, and
+			// they stay on it until stable passes it (1.1.0 > 1.1.0-rc.2 in the plugin's semver)
+			// instead of being offered a downgrade to the last release. A dev build after the version
+			// bump is the other build ahead of Latest; it gets the rollback banner, which only costs a
+			// banner in dev.
+			u = await check({ allowDowngrades: !isPrerelease(current) });
+		}
 	} catch (e) {
 		// The plugin resolves this platform's entry in latest.json BEFORE it compares versions, so a
 		// release whose manifest is missing the entry (a CI leg failed, or is still running) makes
@@ -74,11 +75,13 @@ async function look(): Promise<boolean> {
 		// Any difference counts, like the main path above: `isNewer` here would refuse a rollback on
 		// exactly the platforms whose manifest is broken. Note the releases API lists by creation
 		// date, not by the Latest flag, so this only follows a rollback when the pulled release is
-		// also demoted to a prerelease (which `release_notes` filters out).
+		// also demoted to a prerelease (which `release_notes` filters out). It lists no prereleases
+		// either, so an RC build only hears about a release that has passed it, the same rule as
+		// `allowDowngrades` above.
 		console.error('update manifest unusable, falling back to the releases API', e);
 		const latest = (await releaseNotes())[0]?.version;
-		const current = await getVersion();
 		if (!latest || latest === current) return false;
+		if (isPrerelease(current) && !isNewer(latest, current)) return false;
 		updateState.canInstall = false;
 		updateState.available = { version: latest, rollback: isNewer(current, latest) };
 		return true;
@@ -116,6 +119,13 @@ export async function checkForUpdatesQuiet() {
 	} catch (e) {
 		console.error('update check failed', e); // no endpoint / offline — don't nag on launch
 	}
+}
+
+/** After the update channel changes: drop what the old channel offered and ask the new one. */
+export async function recheckForUpdates() {
+	pending = null;
+	updateState.available = null;
+	await checkForUpdatesQuiet();
 }
 
 /** From Settings: return the outcome so the modal can show it inline (a toast renders behind the
