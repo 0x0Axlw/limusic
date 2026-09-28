@@ -200,7 +200,8 @@
 									style="height:{playback.volume}%"
 								></div>
 							</div>
-							<span class="text-[10px] tabular-nums">{playback.volume}</span>
+							<!-- Three digits wide at every level, or the plate grows a few px at 100 (#336). -->
+							<span class="w-[3ch] text-center text-[10px] tabular-nums">{playback.volume}</span>
 						</div>
 					{/if}
 					<button
