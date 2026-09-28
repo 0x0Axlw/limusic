@@ -542,8 +542,14 @@
    all of it, so the wash stays. (An earlier note in NowPlaying.svelte has promotion measuring as
    noise: that was the video case, where the damage is the video *under* the blur every frame and
    the layer has to be re-rasterized regardless. Still true, and still why the wash is dropped
-   while a video plays.) */
-.art-wash {
+   while a video plays.)
+
+   Not on Chromium (WebView2, Windows), where the promotion is what costs the frames (#341). There
+   the wash's layer is re-blurred every time something above it repaints, and every hover animation
+   that creates a layer pays overlap tests against it. Unpromoted, the blur is rasterized into the
+   page's tiles once. Measured 2026-09-28, perf/scroll.mjs, 1920x1080, 4x CPU, frames over 20 ms:
+   lyrics panel idle while playing 100% -> 4-11%, Home top hover 53% -> 30%. */
+html:not(.chromium) .art-wash {
 	will-change: transform;
 }
 
