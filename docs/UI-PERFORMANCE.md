@@ -39,10 +39,12 @@ controls were each about 30% of the queue's dropped frames, and together about 9
 `TrackRow.svelte`).
 
 **Blur a small source, once.** A blurred artwork backdrop uses a 96px thumbnail
-(`thumb(url, 96)`: a 40px blur discards everything finer) and the `.art-wash` class. `.art-wash`
-puts the wash on its own layer on WebKit only, because the same promotion made the lyrics panel drop
-every frame on Chromium (#341, `layout.css`). A full-screen blur is baked into a small canvas once
-per track and upscaled (`TheaterMode.svelte`).
+(`thumb(url, 96)`: a 40px blur discards everything finer). The image and the gradient that fades
+it out sit together in one clipped wrapper that carries the `.art-wash` class; promoted separately,
+the two layers land a pixel apart while scrolling and a line of raw wash flickers at the fade's
+edge (`HomeHero.svelte`). `.art-wash` puts that wrapper on its own layer on WebKit only, because
+the same promotion made the lyrics panel drop every frame on Chromium (#341, `layout.css`). A
+full-screen blur is baked into a small canvas once per track and upscaled (`TheaterMode.svelte`).
 
 **`backdrop-filter` goes on small elements over still content.** A backdrop filter re-runs whenever
 anything under it repaints. Over the whole window that means four times a second while music plays,

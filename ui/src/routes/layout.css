@@ -531,7 +531,11 @@
 }
 
 /* The blurred cover behind a hero (HomeHero, NowPlaying, the album and library headers), on its
-   own compositing layer. That promotion is the whole point of the class: left unpromoted,
+   own compositing layer. Put it on the element that holds the blurred image *and* the gradient
+   that fades it out, clipped (`overflow-hidden`), never on the image alone: two layers land a pixel
+   apart during WebKitGTK's animated wheel scroll, and a row of the raw wash flickers past the
+   fade's last line. NowPlaying's image carries it directly because it has no fade and never
+   scrolls. That promotion is the whole point of the class: left unpromoted,
    WebKitGTK re-runs the 40px gaussian over the element every time anything underneath it repaints,
    and the artwork tint below repaints the entire document on every frame of its crossfade. In the
    now-playing view the wash is the size of the window, so a track change spent more time
