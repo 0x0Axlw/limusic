@@ -62,6 +62,13 @@ artwork tint to the fills listed in `layout.css`.
 **A `requestAnimationFrame` loop runs only while its output is on screen and changing.** Gate it the
 way `LyricsView.svelte` gates the karaoke clock (`needsFrameClock`), so the app reaches idle frames.
 
+**Layout is read on demand, never at mount.** Reading `scrollWidth`, `clientWidth`,
+`getBoundingClientRect()` and friends right after content is inserted forces the engine to lay out
+everything just mounted, synchronously, before `content-visibility: auto` has skipped anything
+off-screen. Measure when the value is needed: on pointer enter, on scroll, on resize. `Shelf`'s
+arrow check ran in a mount `$effect` and made going back to Home take ~870 ms on WebKitGTK instead
+of ~250 ms, 640 ms of it in that one read (`Shelf.svelte`).
+
 **Long lists are windowed.** Use `rows.svelte.ts` for anything that can reach hundreds of rows.
 `content-visibility: auto` pays off only on lists that genuinely mount thousands of rows
 (`TrackRow`'s `lazy` prop); on a windowed or short list it costs more than it saves (#311).
