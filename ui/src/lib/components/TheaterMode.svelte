@@ -626,11 +626,16 @@
 		{/if}
 		<!-- === The queue, on the backdrop like the lyrics and for the same reason. It keeps its
 		     scrollbar: a playlist queue runs to thousands of rows, and it is the only thing here you
-		     scroll by hand. === -->
+		     scroll by hand.
+		     `relative z-0` gives it its own stacking context, and that is what keeps the scrollbar on
+		     screen. Without it, every transform transition in the lyrics next door (the word pop, the
+		     active line's scale) blanked the thumb on WebKitGTK for as long as it ran, 100-300 ms each,
+		     several times a second through a word-synced song (#343). perf/theaterprobe.py, real
+		     screen captures: thumb missing in 10 of 30 before, 0 of 30 after. === -->
 		{#if queueShown}
 			<div
 				in:fly={{ y: 24, duration: 400, easing: cubicOut }}
-				class="hidden h-full min-h-0 flex-col overflow-hidden lg:flex"
+				class="relative z-0 hidden h-full min-h-0 flex-col overflow-hidden lg:flex"
 			>
 				<QueueList scrollMemory={queueScrollMemory} />
 			</div>

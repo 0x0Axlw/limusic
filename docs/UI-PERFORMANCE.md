@@ -82,6 +82,13 @@ the app off Chromium's compositor thread.
 **Full-screen elements hold still.** A moving viewport-sized layer damages the whole viewport every
 frame and drags every other repaint along with it (`TheaterMode.svelte`).
 
+**A scroller next to animated content gets its own stacking context.** On WebKitGTK, a transform
+transition blanks the scrollbar of a scroller painted after it in the same stacking context, for as
+long as the transition runs. The lyrics run one per sung word, so theater mode's queue scrollbar
+blinked several times a second: missing in 10 of 30 screen captures, 0 of 30 with `relative z-0` on
+the queue's column (#343, `TheaterMode.svelte`). `will-change: transform` fixes it too, but costs a
+layer the stacking context doesn't.
+
 ## Engine-specific CSS
 
 `app.html` puts a `chromium` class on `<html>` under WebView2. Use it only for a difference you have
