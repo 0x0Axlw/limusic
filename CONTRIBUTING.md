@@ -111,6 +111,10 @@ Adding a new language: Weblate creates the JSON file, then import it in
 - **Colours come from theme tokens** (`--foreground`, `--muted-foreground`, and
   friends), never hardcoded hex or rgb. There are light and dark themes, and a
   hardcoded white is invisible in half of them.
+- **Visual effects follow [docs/UI-PERFORMANCE.md](docs/UI-PERFORMANCE.md).**
+  Read it before adding a blur, shadow, hover animation or `backdrop-filter`.
+  Linux, Windows and macOS run three different webviews, and an effect that is
+  free on your machine can make the app lag on someone else's.
 
 ## A note on scope
 
