@@ -7,7 +7,7 @@ use innertube::{
     AlbumPage, ArtistPage, BrowseItem, HistoryGroup, HomePage, MoodSection, PlaylistContinuation,
     PlaylistPage, PlaylistSort, Rating, SearchResults, SongItem,
 };
-use tauri::{Emitter, State};
+use tauri::{Emitter, Manager, State};
 
 use crate::blocked::BlockedArtist;
 use crate::state::{
@@ -214,7 +214,7 @@ pub async fn get_queue(state: St<'_>) -> Result<serde_json::Value, String> {
 /// `visitor_data`) and internal blobs (`queue_json`, `queue_index`, `queue_position`) never cross
 /// into the webview: they'd otherwise ship the login credential to the renderer on every open, and
 /// the webview can't overwrite them either.
-const UI_SETTINGS: [&str; 24] = [
+const UI_SETTINGS: [&str; 25] = [
     "volume",
     "proxy",
     "quality",
@@ -225,6 +225,7 @@ const UI_SETTINGS: [&str; 24] = [
     "discord_rpc_config",
     "close_to_tray",
     "autostart",
+    "start_minimized",
     "autoplay",
     "hide_videos",
     "prevent_duplicates",
@@ -643,6 +644,20 @@ pub async fn open_mini(app: tauri::AppHandle) -> Result<(), String> {
 #[tauri::command]
 pub async fn close_mini(app: tauri::AppHandle) -> Result<(), String> {
     crate::tray::show_main(&app);
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn show_main(state: St<'_>, window: tauri::WebviewWindow) -> Result<(), String> {
+    let is_autostart = std::env::args().any(|arg| arg == "--autostart");
+    let start_minimized = state.db.get_setting("start_minimized").as_deref() == Some("true");
+    if start_minimized && is_autostart {
+        return Ok(());
+    }
+    window.show().map_err(|e| e.to_string())?;
+    window.unminimize().map_err(|e| e.to_string())?;
+    window.set_focus().map_err(|e| e.to_string())?;
+    crate::tray::set_main_visible(window.app_handle(), true);
     Ok(())
 }
 

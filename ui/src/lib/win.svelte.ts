@@ -4,6 +4,7 @@
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { getSettings, onUiVisible } from '$lib/api';
 import { setUiVisible } from '$lib/theme.svelte';
+import { invoke } from '@tauri-apps/api/core';
 
 /** Who draws the window frame. `off` = our custom titlebar owns it (the default), `on` = the
  *  compositor does (the "system title bar" setting, Linux/Windows), `overlay` = macOS traffic
@@ -33,7 +34,7 @@ export function initWin(): () => void {
 			if (s.native_chrome === 'on' || s.native_chrome === 'overlay') win.chrome = s.native_chrome;
 		})
 		.catch(() => {})
-		.finally(() => w.show().catch((e) => console.error('window show failed', e)));
+		.finally(() => invoke('show_main').catch((e) => console.error('window show failed', e)));
 	const sync = () =>
 		w
 			.isMaximized()

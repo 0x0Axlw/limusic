@@ -420,6 +420,7 @@ pub fn run() {
             // the setup that could fail is out of the way.
             #[cfg_attr(target_os = "macos", allow(unused_variables))]
             let system_titlebar = db.get_setting("system_titlebar").as_deref() == Some("true");
+            let start_minimized = db.get_setting("start_minimized").as_deref() == Some("true");
             it.set_blocked(blocked::block_list(&db));
             let clients = Clients::bundled();
 
@@ -692,13 +693,19 @@ pub fn run() {
             // The window starts hidden and the SPA shows it once it has mounted, so the saved size
             // is already applied by then (#45). Safety net: if the frontend never gets that far,
             // show it anyway rather than leaving the app with no window at all.
+            let is_autostart = std::env::args().any(|arg| arg == "--autostart");
             if let Some(w) = app.get_webview_window("main") {
-                tauri::async_runtime::spawn(async move {
-                    tokio::time::sleep(Duration::from_secs(2)).await;
-                    if !w.is_visible().unwrap_or(true) {
-                        let _ = w.show();
-                    }
-                });
+                if start_minimized && is_autostart {
+                    let _ = w.hide();
+                    tray::set_main_visible(app.handle(), false);
+                } else {
+                    tauri::async_runtime::spawn(async move {
+                        tokio::time::sleep(Duration::from_secs(2)).await;
+                        if !w.is_visible().unwrap_or(true) {
+                            let _ = w.show();
+                        }
+                    });
+                }
             }
 
             #[cfg(target_os = "linux")]
@@ -753,6 +760,7 @@ pub fn run() {
             commands::remove_google_account,
             commands::open_mini,
             commands::close_mini,
+            commands::show_main,
             commands::get_home,
             commands::get_home_more,
             commands::get_library,
