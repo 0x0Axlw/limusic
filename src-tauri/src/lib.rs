@@ -711,6 +711,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             commands::search,
             commands::search_all,
+            commands::search_suggestions,
             commands::search_cards,
             commands::search_videos,
             commands::play,

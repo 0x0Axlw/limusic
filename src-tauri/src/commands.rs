@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use innertube::{
     AlbumPage, ArtistPage, BrowseItem, HistoryGroup, HomePage, MoodSection, PlaylistContinuation,
-    PlaylistPage, PlaylistSort, Rating, SearchResults, SongItem,
+    PlaylistPage, PlaylistSort, Rating, SearchResults, SearchSuggestions, SongItem,
 };
 use tauri::{Emitter, State};
 
@@ -49,6 +49,13 @@ pub async fn search_all(
 ) -> Result<SearchResults, String> {
     let client = metadata_client(&state)?;
     state.it.search_all(client, &query, record_history).await.map_err(|e| e.to_string())
+}
+
+/// Typeahead completions + a few matching rows, signed in (see `InnerTube::search_suggestions`).
+#[tauri::command]
+pub async fn search_suggestions(state: St<'_>, query: String) -> Result<SearchSuggestions, String> {
+    let client = metadata_client(&state)?;
+    state.it.search_suggestions(client, &query).await.map_err(|e| e.to_string())
 }
 
 /// Filtered "Show more" search for one category (albums / artists / playlists).

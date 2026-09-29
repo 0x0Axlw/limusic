@@ -295,6 +295,12 @@ export interface SearchResults {
 	playlists: BrowseItem[];
 }
 
+/** Typeahead under a search field: query completions, then a few matching rows. */
+export interface SearchSuggestions {
+	queries: { text: string; /** One of the account's own past searches. */ history: boolean }[];
+	items: BrowseItem[];
+}
+
 export interface AlbumPage {
 	title?: string;
 	artist?: string;
@@ -343,6 +349,10 @@ export const searchVideos = (query: string) => invoke<SongItem[]>('search_videos
 /** Unfiltered search → categorized sections. */
 export const searchAll = (query: string, recordHistory = false) =>
 	invoke<SearchResults>('search_all', { query, recordHistory });
+/** The typeahead. Signed in, yet never written to search history: it's the request YTM's own
+ *  search box sends on every keystroke. */
+export const searchSuggestions = (query: string) =>
+	invoke<SearchSuggestions>('search_suggestions', { query });
 /** Filtered "Show more" card search for one category (albums / artists / playlists). */
 export const searchCards = (query: string, category: 'albums' | 'artists' | 'playlists') =>
 	invoke<BrowseItem[]>('search_cards', { query, category });
