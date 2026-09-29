@@ -660,13 +660,11 @@
 									control: autostartSwitch
 								})}
 								{#if autostartOn}
-									<div class="pl-4">
-										{@render row({
-											title: t('settings.general.start_minimized'),
-											desc: t('settings.general.start_minimized_hint'),
-											control: startMinimizedSwitch
-										})}
-									</div>
+									{@render row({
+										title: t('settings.general.start_minimized'),
+										desc: t('settings.general.start_minimized_hint'),
+										control: startMinimizedSwitch
+									})}
 								{/if}
 								{#if !systemTitlebarFixed}
 									{@render row({
