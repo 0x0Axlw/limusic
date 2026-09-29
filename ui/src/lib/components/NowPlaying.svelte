@@ -18,8 +18,15 @@
 	} from '@hugeicons/core-free-icons';
 	import * as Tabs from '$lib/components/ui/tabs';
 	import * as api from '$lib/api';
-	import { np, playback, ui, wheelVolume } from '$lib/player.svelte';
-	import { canVideo, claimVideo, parkVideo, showVideo, video } from '$lib/video.svelte';
+	import { np, playback, prefs, ui, wheelVolume } from '$lib/player.svelte';
+	import {
+		canVideo,
+		claimVideo,
+		parkVideo,
+		setHole,
+		showVideo,
+		video
+	} from '$lib/video.svelte';
 	import { appearance } from '$lib/theme.svelte';
 	import { t } from '$lib/i18n.svelte';
 	import { thumb } from '$lib/thumb';
@@ -104,6 +111,37 @@
 		volTimer = setTimeout(() => (volFlash = false), 1000);
 	}
 
+	// Linux: the picture is drawn by mpv underneath the page, and the box below is a hole it shows
+	// through (src-tauri/src/nativevideo.rs). Not while the view flies in or out: the box moves every
+	// frame then, and the picture underneath cannot follow. 340 is the fly's 320 and a frame.
+	let settled = $state(false);
+	$effect(() => {
+		const timer = setTimeout(() => (settled = true), 340);
+		return () => clearTimeout(timer);
+	});
+
+	/** Report the hole's box whenever it moves, and none while the window is hidden (the tray, the
+	 *  mini player): mpv then stops decoding the picture, and picks it up in step on the way back. */
+	function holeFor(el: HTMLElement) {
+		// Theater mode paints over the whole window, so nobody would see the picture.
+		if (!settled || ui.theaterOpen) return;
+		const measure = () => {
+			if (document.hidden) return setHole(null);
+			const r = el.getBoundingClientRect();
+			setHole({ x: r.left, y: r.top, w: r.width, h: r.height });
+		};
+		// The box, and the window: every layout change that moves it also resizes one of them.
+		const ro = new ResizeObserver(measure);
+		ro.observe(el);
+		ro.observe(document.documentElement);
+		document.addEventListener('visibilitychange', measure);
+		return () => {
+			ro.disconnect();
+			document.removeEventListener('visibilitychange', measure);
+			setHole(null);
+		};
+	}
+
 </script>
 
 <!-- Covers the page but not the sidebar (you navigate away to minimise) and not the player bar,
@@ -118,10 +156,13 @@
 <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
 <div
 	transition:fly={{ y: '100%', duration: 320, easing: cubicOut }}
+	onoutrostart={() => (settled = false)}
 	onpointerdown={(e) => ((pressedKeep = keeps(e.target)), (releasedKeep = false))}
 	onpointerup={(e) => (releasedKeep = keeps(e.target))}
 	onclick={onBackdropClick}
-	class="absolute inset-y-0 left-16 right-0 z-20 flex justify-center overflow-hidden bg-background px-4 py-4 sm:px-6 sm:py-6 lg:px-10 {ui.sidebarCollapsed
+	class="absolute inset-y-0 left-16 right-0 z-20 flex justify-center overflow-hidden px-4 py-4 {video.hole
+		? ''
+		: 'bg-background'} sm:px-6 sm:py-6 lg:px-10 {ui.sidebarCollapsed
 		? ''
 		: 'lg:left-60'} {inset}"
 >
@@ -233,13 +274,24 @@
 						     being closed, and this is where it gets moved to while the view is open.
 						     `display: contents` so the wrapper generates no box of its own and the video's
 						     `w-full` still resolves against the button. -->
-						<div
-							class="contents"
-							{@attach (box: HTMLElement) => {
-								claimVideo(box);
-								return parkVideo;
-							}}
-						></div>
+						{#if prefs.nativeVideo}
+							<!-- Transparent once the picture is up (+layout paints everything around it),
+							     black until then. -->
+							{#if showVideo()}
+								<div
+									class="aspect-video w-full rounded-2xl {video.hole ? '' : 'bg-black'}"
+									{@attach holeFor}
+								></div>
+							{/if}
+						{:else}
+							<div
+								class="contents"
+								{@attach (box: HTMLElement) => {
+									claimVideo(box);
+									return parkVideo;
+								}}
+							></div>
+						{/if}
 						<!-- The artwork, when the video above isn't the picture. Both arms carry the same
 						     guard rather than nesting, so the branch below keeps its indentation. -->
 						{#if !showVideo() && src && attempt < srcs.length}

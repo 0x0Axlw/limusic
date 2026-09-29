@@ -280,6 +280,25 @@ pub async fn video_stream(
     }
 }
 
+/// Where the page's hole for the music video is (`[x, y, w, h]`, CSS pixels, viewport-relative),
+/// or `None` when it has none. mpv draws the picture there, underneath the webview
+/// (nativevideo.rs). `false` means no picture is up, and for a rect that there never will be: the
+/// page falls back to the `<video>` element.
+#[tauri::command]
+pub async fn native_video_rect(
+    app: tauri::AppHandle,
+    state: St<'_>,
+    rect: Option<[f64; 4]>,
+) -> Result<bool, String> {
+    #[cfg(target_os = "linux")]
+    return Ok(crate::nativevideo::set_rect(&app, state.inner().clone(), rect).await);
+    #[cfg(not(target_os = "linux"))]
+    {
+        let _ = (app, state, rect);
+        Ok(false)
+    }
+}
+
 /// Forget a resolved music-video URL, so the next `video_stream` for this id resolves a fresh one.
 /// The player view calls this when the `<video>` element fails to load, which is what an expired
 /// or revoked googlevideo link looks like from the webview.
@@ -314,6 +333,7 @@ pub async fn get_settings(state: St<'_>) -> Result<serde_json::Value, String> {
         .map(|(k, v)| (k, serde_json::Value::String(v)))
         .collect();
     map.insert("native_chrome".into(), native_chrome(&state.db).into());
+    map.insert("native_video".into(), crate::state::native_video().to_string().into());
     Ok(serde_json::Value::Object(map))
 }
 
@@ -338,6 +358,10 @@ pub async fn set_setting(
         }
     }
     state.db.set_setting(&key, &value);
+    // A music video track already playing gets its picture now rather than from the next track.
+    if key == "music_videos" && value == "true" {
+        state.inner().attach_current_video().await;
+    }
     // Presence connects/clears the moment it's toggled — the user shouldn't have to skip a track
     // to see it take effect.
     if key == "discord_rpc" {
