@@ -6,13 +6,14 @@
 //! Best-effort like `media.rs`: a missing notification daemon is a `debug!` line.
 
 #[cfg(all(unix, not(target_os = "macos")))]
-use std::sync::atomic::{AtomicU32, Ordering};
+use std::sync::Mutex;
 use tauri::{AppHandle, Manager};
 
-/// The daemon's id for the last one we showed. Passed back as `replaces_id`, so each song replaces
-/// the previous song's notification instead of leaving one per track in the history.
+/// The last song's notification, closed before the next one is shown so a run of skips leaves one
+/// up, not a stack. Not `replaces_id`: Plasma updates an expired notification in place in its
+/// history and never pops it up again, so only the first skip was visible.
 #[cfg(all(unix, not(target_os = "macos")))]
-static LAST_ID: AtomicU32 = AtomicU32::new(0);
+static PREV: Mutex<Option<notify_rust::NotificationHandle>> = Mutex::new(None);
 
 pub fn track_changed(app: &AppHandle, title: &str, artists: &str) {
     if app.webview_windows().values().any(|w| w.is_focused().unwrap_or(false)) {
@@ -24,9 +25,7 @@ pub fn track_changed(app: &AppHandle, title: &str, artists: &str) {
     {
         // The binary name is the icon name the .deb/.rpm install. An AppImage has no themed icon,
         // so there the daemon shows its generic one.
-        n.auto_icon()
-            .hint(notify_rust::Hint::SuppressSound(true))
-            .id(LAST_ID.load(Ordering::Relaxed));
+        n.auto_icon().hint(notify_rust::Hint::SuppressSound(true));
     }
     // A toast is only delivered for an AppUserModelID that a Start menu shortcut registers, and the
     // NSIS installer registers the bundle identifier. A dev build has no shortcut, so it keeps
@@ -44,11 +43,20 @@ pub fn track_changed(app: &AppHandle, title: &str, artists: &str) {
         &app.config().identifier
     });
     // A blocking D-Bus / WinRT / AppKit call: keep it off the playback path.
-    std::thread::spawn(move || match n.show() {
+    std::thread::spawn(move || {
+        // Held across close + show, so two quick skips can't both close the same one.
         #[cfg(all(unix, not(target_os = "macos")))]
-        Ok(h) => LAST_ID.store(h.id(), Ordering::Relaxed),
-        #[cfg(not(all(unix, not(target_os = "macos"))))]
-        Ok(_) => {}
-        Err(e) => tracing::debug!("notification: {e}"),
+        let mut prev = PREV.lock().unwrap_or_else(|e| e.into_inner());
+        #[cfg(all(unix, not(target_os = "macos")))]
+        if let Some(h) = prev.take() {
+            h.close();
+        }
+        match n.show() {
+            #[cfg(all(unix, not(target_os = "macos")))]
+            Ok(h) => *prev = Some(h),
+            #[cfg(not(all(unix, not(target_os = "macos"))))]
+            Ok(_) => {}
+            Err(e) => tracing::debug!("notification: {e}"),
+        }
     });
 }
