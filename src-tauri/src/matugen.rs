@@ -36,13 +36,18 @@ pub fn start(app: AppHandle) {
 
     thread::spawn(move || {
         let _watcher = watcher;
-        while let Ok(Ok(event)) = rx.recv() {
-            if !event.paths.iter().any(|p| p == &watched) {
-                continue;
+        while let Ok(result) = rx.recv() {
+            match result {
+                Ok(event) => {
+                    if !event.paths.iter().any(|p| p == &watched) {
+                        continue;
+                    }
+                    thread::sleep(Duration::from_millis(75));
+                    let css = fs::read_to_string(&watched).ok();
+                    let _ = app.emit("matugen-theme-changed", css);
+                }
+                Err(error) => tracing::warn!(%error, "Matugen watcher reported an error"),
             }
-            thread::sleep(Duration::from_millis(75));
-            let css = fs::read_to_string(&watched).ok();
-            let _ = app.emit("matugen-theme-changed", css);
         }
     });
 }
