@@ -2150,6 +2150,11 @@ pub fn theater_fullscreen(window: tauri::WebviewWindow, on: bool) -> Result<(), 
     }
 }
 
+#[tauri::command]
+pub fn get_matugen_theme(app: tauri::AppHandle) -> Result<Option<String>, String> {
+    crate::matugen::read(&app)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
