@@ -319,6 +319,13 @@ pub async fn set_setting(
     if !UI_SETTINGS.contains(&key.as_str()) {
         return Err(format!("unknown setting: {key}"));
     }
+    if key == "start_minimized" && value == "true" {
+        use tauri_plugin_autostart::ManagerExt;
+        let al = app.autolaunch();
+        if al.is_enabled().unwrap_or(false) {
+            al.enable().map_err(|e| format!("autostart: {e}"))?;
+        }
+    }
     state.db.set_setting(&key, &value);
     // Presence connects/clears the moment it's toggled — the user shouldn't have to skip a track
     // to see it take effect.
