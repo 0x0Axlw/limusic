@@ -7,7 +7,7 @@ use innertube::{
     AlbumPage, ArtistPage, BrowseItem, HistoryGroup, HomePage, MoodSection, PlaylistContinuation,
     PlaylistPage, PlaylistSort, Rating, SearchResults, SearchSuggestions, SongItem,
 };
-use tauri::{Emitter, State};
+use tauri::{Emitter, Manager, State};
 
 use crate::blocked::BlockedArtist;
 use crate::state::{
@@ -221,7 +221,7 @@ pub async fn get_queue(state: St<'_>) -> Result<serde_json::Value, String> {
 /// `visitor_data`) and internal blobs (`queue_json`, `queue_index`, `queue_position`) never cross
 /// into the webview: they'd otherwise ship the login credential to the renderer on every open, and
 /// the webview can't overwrite them either.
-const UI_SETTINGS: [&str; 25] = [
+const UI_SETTINGS: [&str; 26] = [
     "volume",
     "proxy",
     "quality",
@@ -233,6 +233,7 @@ const UI_SETTINGS: [&str; 25] = [
     "close_to_tray",
     "track_notifications",
     "autostart",
+    "start_minimized",
     "autoplay",
     "hide_videos",
     "prevent_duplicates",
@@ -325,6 +326,16 @@ pub async fn set_setting(
 ) -> Result<(), String> {
     if !UI_SETTINGS.contains(&key.as_str()) {
         return Err(format!("unknown setting: {key}"));
+    }
+    // A login entry registered before `--autostart` existed doesn't carry it, and without it the
+    // setting never applies. `enable` rewrites the entry. Before the write, so a failure leaves the
+    // setting off.
+    if key == "start_minimized" && value == "true" {
+        use tauri_plugin_autostart::ManagerExt;
+        let al = app.autolaunch();
+        if al.is_enabled().unwrap_or(false) {
+            al.enable().map_err(|e| format!("autostart: {e}"))?;
+        }
     }
     state.db.set_setting(&key, &value);
     // Presence connects/clears the moment it's toggled — the user shouldn't have to skip a track
@@ -652,6 +663,18 @@ pub async fn open_mini(app: tauri::AppHandle) -> Result<(), String> {
 pub async fn close_mini(app: tauri::AppHandle) -> Result<(), String> {
     crate::tray::show_main(&app);
     Ok(())
+}
+
+#[tauri::command]
+pub async fn show_main(state: St<'_>, window: tauri::WebviewWindow) -> Result<bool, String> {
+    if crate::should_start_minimized(&state.db) {
+        return Ok(false);
+    }
+    window.show().map_err(|e| e.to_string())?;
+    window.unminimize().map_err(|e| e.to_string())?;
+    window.set_focus().map_err(|e| e.to_string())?;
+    crate::tray::set_main_visible(window.app_handle(), true);
+    Ok(true)
 }
 
 // --- browse / library (context/08) ---------------------------------------------------------

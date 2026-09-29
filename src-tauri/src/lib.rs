@@ -28,6 +28,7 @@ mod tray;
 mod videoproxy;
 mod webview;
 
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -221,6 +222,25 @@ fn fatal(what: &str, detail: &str) -> ! {
     std::process::exit(1)
 }
 
+/// Whether the OS launched us at login, through the autostart entry's `--autostart`.
+///
+/// Not the argument alone: Tauri restarts (the update banner's relaunch, the tray's Restart) hand
+/// the old process's arguments on, so a copy started at login would come back hidden after every
+/// update. A restarted process inherits the environment instead, and finds [`RESTARTED_ENV`],
+/// which `run` sets once it has read this. Windows keeps it too: the updater starts the per-user
+/// NSIS installer with a plain ShellExecute, and the installer starts the new version the same way.
+static AUTOSTARTED: AtomicBool = AtomicBool::new(false);
+const RESTARTED_ENV: &str = "LIMUSIC_RESTARTED";
+
+/// Stay in the tray instead of showing the window: launched at login with "Start minimized to
+/// tray" on, and a tray icon to come back from. Asked by the startup safety net and by
+/// `show_main` once the SPA has mounted.
+fn should_start_minimized(db: &Db) -> bool {
+    AUTOSTARTED.load(Ordering::Relaxed)
+        && db.get_setting("start_minimized").as_deref() == Some("true")
+        && tray::available()
+}
+
 /// Tauri entry point. Applies the platform boot fixes (open-fd limit, NVIDIA/WebKit env), restores
 /// the persisted session, wires every command and plugin, and runs the event loop. context/01
 /// §startup.
@@ -229,6 +249,14 @@ pub fn run() {
     // forks, and cannot be raised for them afterwards.
     #[cfg(target_os = "linux")]
     raise_fd_limit();
+
+    // See `AUTOSTARTED`. Up here with the other env writes, before any thread exists to read it.
+    AUTOSTARTED.store(
+        std::env::args_os().any(|a| a == "--autostart")
+            && std::env::var_os(RESTARTED_ENV).is_none(),
+        Ordering::Relaxed,
+    );
+    std::env::set_var(RESTARTED_ENV, "1");
 
     // Two separate NVIDIA/WebKitGTK failures, two separate variables. Neither substitutes for
     // the other, which is the mistake ee48c55 made.
@@ -315,7 +343,7 @@ pub fn run() {
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_autostart::init(
             tauri_plugin_autostart::MacosLauncher::LaunchAgent,
-            None,
+            Some(vec!["--autostart"]),
         ))
         // Reopen at the size/position the window was left at. Only "main": the mini widget is
         // fixed-size and the login/cipher/PoToken webviews are windows too. Size, position and
@@ -495,7 +523,7 @@ pub fn run() {
                 it,
                 clients,
                 player,
-                db,
+                db.clone(),
                 handle.clone(),
                 orchestrator,
                 lt,
@@ -523,6 +551,7 @@ pub fn run() {
             // System tray: playback controls + show/quit while running in the background.
             if let Err(e) = tray::init(&handle) {
                 tracing::warn!(error = %e, "tray init failed (continuing without tray)");
+                tray::set_available(false);
             }
 
             // System-wide global hotkeys for playback control
@@ -692,14 +721,17 @@ pub fn run() {
 
             // The window starts hidden and the SPA shows it once it has mounted, so the saved size
             // is already applied by then (#45). Safety net: if the frontend never gets that far,
-            // show it anyway rather than leaving the app with no window at all.
+            // show it anyway rather than leaving the app with no window at all. Not when starting
+            // in the tray, where the hidden window is the point.
             if let Some(w) = app.get_webview_window("main") {
-                tauri::async_runtime::spawn(async move {
-                    tokio::time::sleep(Duration::from_secs(2)).await;
-                    if !w.is_visible().unwrap_or(true) {
-                        let _ = w.show();
-                    }
-                });
+                if !should_start_minimized(&db) {
+                    tauri::async_runtime::spawn(async move {
+                        tokio::time::sleep(Duration::from_secs(2)).await;
+                        if !w.is_visible().unwrap_or(true) {
+                            let _ = w.show();
+                        }
+                    });
+                }
             }
 
             #[cfg(target_os = "linux")]
@@ -755,6 +787,7 @@ pub fn run() {
             commands::remove_google_account,
             commands::open_mini,
             commands::close_mini,
+            commands::show_main,
             commands::get_home,
             commands::get_home_more,
             commands::get_library,

@@ -353,6 +353,7 @@
 	const trayOn = $derived(settings.close_to_tray !== 'false');
 	const trackNotificationsOn = $derived(settings.track_notifications === 'true');
 	const autostartOn = $derived(settings.autostart === 'true');
+	const startMinimizedOn = $derived(settings.start_minimized === 'true');
 	// `native_chrome` is read-only and platform-derived (commands.rs). `overlay` is macOS, where the
 	// traffic lights are fixed at window creation and there is nothing to offer the user (#65).
 	const systemTitlebarOn = $derived(settings.native_chrome !== 'off');
@@ -481,6 +482,16 @@
 			await api.setSetting('autostart', settings.autostart);
 		} catch (e) {
 			settings.autostart = on ? 'false' : 'true'; // registration failed — revert the switch
+			toast.error(String(e));
+		}
+	}
+
+	async function setStartMinimized(on: boolean) {
+		settings.start_minimized = on ? 'true' : 'false';
+		try {
+			await api.setSetting('start_minimized', settings.start_minimized);
+		} catch (e) {
+			settings.start_minimized = on ? 'false' : 'true';
 			toast.error(String(e));
 		}
 	}
@@ -659,6 +670,13 @@
 									desc: t('settings.general.autostart_hint'),
 									control: autostartSwitch
 								})}
+								{#if autostartOn}
+									{@render row({
+										title: t('settings.general.start_minimized'),
+										desc: t('settings.general.start_minimized_hint'),
+										control: startMinimizedSwitch
+									})}
+								{/if}
 								{#if !systemTitlebarFixed}
 									{@render row({
 										title: t('settings.general.system_titlebar'),
@@ -1038,6 +1056,7 @@
 		onCheckedChange={setTrackNotifications}
 	/>{/snippet}
 {#snippet autostartSwitch()}<Switch checked={autostartOn} onCheckedChange={setAutostart} />{/snippet}
+{#snippet startMinimizedSwitch()}<Switch checked={startMinimizedOn} onCheckedChange={setStartMinimized} />{/snippet}
 {#snippet systemTitlebarSwitch()}<Switch
 		checked={systemTitlebarOn}
 		onCheckedChange={setSystemTitlebar}
