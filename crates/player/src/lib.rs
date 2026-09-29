@@ -192,9 +192,17 @@ fn new_mpv(cache_dir: &str) -> Result<Mpv, Error> {
     // of its own. `video-timing-offset=0` because otherwise each render call blocks until its
     // frame's display time, and it is made on the app's UI thread. See video.rs.
     mpv.set_property("vid", "no")?;
+    // The OSD off: the app has its own seek bar, and mpv otherwise draws its own into the picture
+    // on every seek.
     // Best-effort, unlike everything around them: an mpv that refused one of these would otherwise
     // fail the whole player, and the music must never depend on the picture.
-    for (key, value) in [("vo", "libmpv"), ("hwdec", "auto-safe"), ("video-timing-offset", "0")] {
+    for (key, value) in [
+        ("vo", "libmpv"),
+        ("hwdec", "auto-safe"),
+        ("video-timing-offset", "0"),
+        ("osd-level", "0"),
+        ("osd-bar", "no"),
+    ] {
         if let Err(e) = mpv.set_property(key, value) {
             tracing::warn!(key, error = %e, "mpv refused a video option");
         }
