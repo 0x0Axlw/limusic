@@ -27,7 +27,7 @@ pub use imp::{init, set_icon, set_playing};
 /// (i3bar, dwm, xfce4-panel without its SNI plugin) runs no `StatusNotifierWatcher` at all, so
 /// registration fails and no icon ever appears (#232). Closing to a tray that isn't there leaves
 /// the app running with no window and no way back except a second launch, so ✕ checks this before
-/// hiding. Optimistic: only the Linux backend ever clears it, once it knows there is no watcher.
+/// hiding. Optimistic: `set_available` exists and can clear it (such as when init fails).
 static AVAILABLE: AtomicBool = AtomicBool::new(true);
 
 /// Can the window be brought back from the tray? See [`AVAILABLE`].

@@ -220,6 +220,12 @@ fn fatal(what: &str, detail: &str) -> ! {
     std::process::exit(1)
 }
 
+pub fn should_start_minimized(db: &Db) -> bool {
+    let is_autostart = std::env::args().any(|arg| arg == "--autostart");
+    let start_minimized = db.get_setting("start_minimized").as_deref() == Some("true");
+    start_minimized && is_autostart && tray::available()
+}
+
 /// Tauri entry point. Applies the platform boot fixes (open-fd limit, NVIDIA/WebKit env), restores
 /// the persisted session, wires every command and plugin, and runs the event loop. context/01
 /// §startup.
@@ -314,7 +320,7 @@ pub fn run() {
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_autostart::init(
             tauri_plugin_autostart::MacosLauncher::LaunchAgent,
-            None,
+            Some(vec!["--autostart"]),
         ))
         // Reopen at the size/position the window was left at. Only "main": the mini widget is
         // fixed-size and the login/cipher/PoToken webviews are windows too. Size, position and
@@ -420,7 +426,6 @@ pub fn run() {
             // the setup that could fail is out of the way.
             #[cfg_attr(target_os = "macos", allow(unused_variables))]
             let system_titlebar = db.get_setting("system_titlebar").as_deref() == Some("true");
-            let start_minimized = db.get_setting("start_minimized").as_deref() == Some("true");
             it.set_blocked(blocked::block_list(&db));
             let clients = Clients::bundled();
 
@@ -495,7 +500,7 @@ pub fn run() {
                 it,
                 clients,
                 player,
-                db,
+                db.clone(),
                 handle.clone(),
                 orchestrator,
                 lt,
@@ -694,12 +699,8 @@ pub fn run() {
             // The window starts hidden and the SPA shows it once it has mounted, so the saved size
             // is already applied by then (#45). Safety net: if the frontend never gets that far,
             // show it anyway rather than leaving the app with no window at all.
-            let is_autostart = std::env::args().any(|arg| arg == "--autostart");
             if let Some(w) = app.get_webview_window("main") {
-                if start_minimized && is_autostart && tray::available() {
-                    let _ = w.hide();
-                    tray::set_main_visible(app.handle(), false);
-                } else {
+                if !should_start_minimized(&db) {
                     tauri::async_runtime::spawn(async move {
                         tokio::time::sleep(Duration::from_secs(2)).await;
                         if !w.is_visible().unwrap_or(true) {

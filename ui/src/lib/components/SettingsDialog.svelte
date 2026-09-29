@@ -72,8 +72,6 @@
 	import LyricsSourcesSettings from '$lib/components/LyricsSourcesSettings.svelte';
 	import LanguagePicker from '$lib/components/LanguagePicker.svelte';
 
-
-
 	type TabId = 'general' | 'themes' | 'playback' | 'hotkeys' | 'discord' | 'data' | 'about';
 	const TABS = $derived<{ id: TabId; label: string; hint: string; icon: typeof Settings02Icon }[]>([
 		{ id: 'general', label: t('settings.tabs.general'), hint: t('settings.tabs.general_hint'), icon: Settings02Icon },
@@ -665,7 +663,7 @@
 									<div class="pl-4">
 										{@render row({
 											title: t('settings.general.start_minimized'),
-											desc: t('settings.general.start_minimized_desc'),
+											desc: t('settings.general.start_minimized_hint'),
 											control: startMinimizedSwitch
 										})}
 									</div>

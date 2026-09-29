@@ -379,6 +379,13 @@ pub async fn set_setting(
         };
         res.map_err(|e| format!("autostart: {e}"))?;
     }
+    if key == "start_minimized" {
+        use tauri_plugin_autostart::ManagerExt;
+        let al = app.autolaunch();
+        if al.is_enabled().unwrap_or(false) {
+            al.enable().map_err(|e| format!("autostart: {e}"))?;
+        }
+    }
     Ok(())
 }
 
@@ -648,17 +655,15 @@ pub async fn close_mini(app: tauri::AppHandle) -> Result<(), String> {
 }
 
 #[tauri::command]
-pub async fn show_main(state: St<'_>, window: tauri::WebviewWindow) -> Result<(), String> {
-    let is_autostart = std::env::args().any(|arg| arg == "--autostart");
-    let start_minimized = state.db.get_setting("start_minimized").as_deref() == Some("true");
-    if start_minimized && is_autostart && crate::tray::available() {
-        return Ok(());
+pub async fn show_main(state: St<'_>, window: tauri::WebviewWindow) -> Result<bool, String> {
+    if crate::should_start_minimized(&state.db) {
+        return Ok(false);
     }
     window.show().map_err(|e| e.to_string())?;
     window.unminimize().map_err(|e| e.to_string())?;
     window.set_focus().map_err(|e| e.to_string())?;
     crate::tray::set_main_visible(window.app_handle(), true);
-    Ok(())
+    Ok(true)
 }
 
 // --- browse / library (context/08) ---------------------------------------------------------
