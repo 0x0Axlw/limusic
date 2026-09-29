@@ -106,7 +106,11 @@ impl Player {
 }
 
 /// `vid` on every deck: on only for the one being heard, and only while someone can see it.
+///
+/// Under the `videos` lock, like the selection after a `video-add` (see [`add_video`]): the two
+/// race, and whichever writes last has to be the one that read the current visibility.
 pub(crate) fn apply_vid(decks: &Decks) {
+    let _serial = decks.videos.lock().unwrap();
     let active = decks.active.load(Ordering::SeqCst);
     let on = decks.video_visible.load(Ordering::SeqCst);
     for deck in 0..2 {
@@ -146,24 +150,42 @@ pub(crate) fn deck_swapped(decks: &Arc<Decks>) {
 
 /// `video-add`, off the calling thread: it returns only once mpv has opened the file, which is a
 /// network round trip (mpv opens it on a thread of its own, so playback never waits on it).
+///
+/// Always added unselected, and selected afterwards by id if someone can see it by then. Choosing
+/// `select` or `auto` up front read the visibility before the round trip: the view asking for the
+/// picture during it set `vid=auto` while there was no track to pick, the track then arrived
+/// unselected, and setting `auto` again is a no-op in mpv. That was the black box after a track
+/// change or an opened link, which only closing and reopening the view (`no` then `auto`) cleared.
 fn add_video(decks: &Arc<Decks>, deck: usize, url: String) {
     let Some(mpv) = decks.mpv(deck).cloned() else { return };
     let decks = decks.clone();
     let _ = std::thread::Builder::new().name("mpv-video-add".into()).spawn(move || {
-        let visible = decks.video_visible.load(Ordering::SeqCst);
-        if let Err(e) =
-            mpv.command("video-add", &[&quoted(&url), if visible { "select" } else { "auto" }])
-        {
+        if let Err(e) = mpv.command("video-add", &[&quoted(&url), "auto"]) {
             tracing::warn!(deck, error = %e, "video: mpv could not open the picture");
             return;
         }
-        tracing::debug!(deck, "video: attached");
-        // The view may have opened while the file was opening, after the flag above was read.
-        if decks.video_visible.load(Ordering::SeqCst) && decks.active.load(Ordering::SeqCst) == deck
-        {
-            let _ = mpv.set_property("vid", "auto");
-        }
+        let _serial = decks.videos.lock().unwrap();
+        let shown = decks.video_visible.load(Ordering::SeqCst)
+            && decks.active.load(Ordering::SeqCst) == deck;
+        let track = shown.then(|| newest_video_track(&mpv)).flatten();
+        let _ = match track {
+            Some(id) => mpv.set_property("vid", id),
+            None => mpv.set_property("vid", "no"),
+        };
+        tracing::debug!(deck, ?track, "video: attached");
     });
+}
+
+/// The id of the last video track in the file, which is the one `video-add` just appended.
+fn newest_video_track(mpv: &libmpv2::Mpv) -> Option<i64> {
+    let n = mpv.get_property::<i64>("track-list/count").ok()?;
+    (0..n).rev().find_map(|i| {
+        let kind = mpv.get_property::<String>(&format!("track-list/{i}/type")).ok()?;
+        if kind != "video" {
+            return None;
+        }
+        mpv.get_property::<i64>(&format!("track-list/{i}/id")).ok()
+    })
 }
 
 /// mpv's render contexts, one per deck, living on the app's GL thread.

@@ -261,6 +261,7 @@ pub async fn set_rect(
             s.overlay.queue_resize();
             true
         });
+        tracing::debug!(?rect, shown, "native video: rect");
         // After the surface, so mpv never starts a video output with no context to draw into.
         state.player.set_video_visible(shown);
         let _ = tx.send(shown);
