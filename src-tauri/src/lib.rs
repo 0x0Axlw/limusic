@@ -16,6 +16,7 @@ mod local;
 mod lyrics;
 mod media;
 mod mini;
+mod notify;
 mod orchestrator;
 mod potoken;
 mod romanize;

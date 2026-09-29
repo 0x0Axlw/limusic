@@ -2333,6 +2333,12 @@ impl AppState {
         if let Some(d) = &self.discord {
             d.set_track(item);
         }
+        // A restored queue is paused at launch: nothing started, so nothing to announce.
+        if stream_client != "restored"
+            && self.db.get_setting("track_notifications").as_deref() == Some("true")
+        {
+            crate::notify::track_changed(&self.app, &item.title, &item.artists);
+        }
         // Read per track rather than cached: one settings row on a track change, and the switch
         // then applies to what is already playing.
         let primary_only = self.db.get_setting("lastfm_primary_artist").as_deref() == Some("true");

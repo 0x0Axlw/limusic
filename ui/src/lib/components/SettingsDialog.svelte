@@ -351,6 +351,7 @@
 	const updateBannerOn = $derived(settings.update_banner !== 'false');
 	const betaOn = $derived(settings.update_channel === 'beta');
 	const trayOn = $derived(settings.close_to_tray !== 'false');
+	const trackNotificationsOn = $derived(settings.track_notifications === 'true');
 	const autostartOn = $derived(settings.autostart === 'true');
 	// `native_chrome` is read-only and platform-derived (commands.rs). `overlay` is macOS, where the
 	// traffic lights are fixed at window creation and there is nothing to offer the user (#65).
@@ -452,6 +453,11 @@
 	async function setTray(on: boolean) {
 		settings.close_to_tray = on ? 'true' : 'false';
 		await api.setSetting('close_to_tray', settings.close_to_tray);
+	}
+
+	async function setTrackNotifications(on: boolean) {
+		settings.track_notifications = on ? 'true' : 'false';
+		await api.setSetting('track_notifications', settings.track_notifications);
 	}
 
 	// The backend flips the real window decorations; `win.chrome` is what the SPA keys its own
@@ -642,6 +648,11 @@
 									title: t('settings.general.close_to_tray'),
 									desc: t('settings.general.close_to_tray_hint'),
 									control: traySwitch
+								})}
+								{@render row({
+									title: t('settings.general.track_notifications'),
+									desc: t('settings.general.track_notifications_hint'),
+									control: trackNotificationsSwitch
 								})}
 								{@render row({
 									title: t('settings.general.autostart'),
@@ -1022,6 +1033,10 @@
 
 {#snippet historySwitch()}<Switch checked={historyOn} onCheckedChange={setHistory} />{/snippet}
 {#snippet traySwitch()}<Switch checked={trayOn} onCheckedChange={setTray} />{/snippet}
+{#snippet trackNotificationsSwitch()}<Switch
+		checked={trackNotificationsOn}
+		onCheckedChange={setTrackNotifications}
+	/>{/snippet}
 {#snippet autostartSwitch()}<Switch checked={autostartOn} onCheckedChange={setAutostart} />{/snippet}
 {#snippet systemTitlebarSwitch()}<Switch
 		checked={systemTitlebarOn}
