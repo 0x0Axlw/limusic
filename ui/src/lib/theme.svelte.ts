@@ -427,10 +427,11 @@ export function prewarmArtworkAccent(url: string | undefined | null): void {
 /** Apply the stored theme + customization on startup (defaults to the default palette, no overrides). */
 function applyMatugenTheme(css: string | null): void {
 	let style = document.getElementById(MATUGEN_STYLE_ID) as HTMLStyleElement | null;
-	if (!css) { style?.remove(); document.documentElement.classList.remove('matugen-theme'); return; }
+	if (!css) { style?.remove(); document.documentElement.classList.remove('matugen-theme'); readBack(); return; }
 	if (!style) { style = document.createElement('style'); style.id = MATUGEN_STYLE_ID; document.head.append(style); }
 	style.textContent = css;
 	document.documentElement.classList.add('matugen-theme');
+	readBack();
 }
 
 export async function loadMatugenTheme(): Promise<void> {
@@ -438,11 +439,16 @@ export async function loadMatugenTheme(): Promise<void> {
 }
 
 let matugenListening = false;
-function initMatugen(): void {
-	void loadMatugenTheme();
+async function initMatugen(): Promise<void> {
 	if (matugenListening) return;
 	matugenListening = true;
-	void onMatugenThemeChanged((css) => applyMatugenTheme(css));
+	let latestEvent: string | null | undefined;
+	await onMatugenThemeChanged((css) => {
+		latestEvent = css;
+		applyMatugenTheme(css);
+	});
+	const css = await getMatugenTheme().catch(() => null);
+	if (latestEvent === undefined) applyMatugenTheme(css);
 }
 
 export function initTheme(): void {
