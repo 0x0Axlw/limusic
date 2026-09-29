@@ -27,6 +27,7 @@ mod tray;
 mod videoproxy;
 mod webview;
 
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -220,10 +221,23 @@ fn fatal(what: &str, detail: &str) -> ! {
     std::process::exit(1)
 }
 
-pub fn should_start_minimized(db: &Db) -> bool {
-    let is_autostart = std::env::args().any(|arg| arg == "--autostart");
-    let start_minimized = db.get_setting("start_minimized").as_deref() == Some("true");
-    start_minimized && is_autostart && tray::available()
+/// Whether the OS launched us at login, through the autostart entry's `--autostart`.
+///
+/// Not the argument alone: Tauri restarts (the update banner's relaunch, the tray's Restart) hand
+/// the old process's arguments on, so a copy started at login would come back hidden after every
+/// update. A restarted process inherits the environment instead, and finds [`RESTARTED_ENV`],
+/// which `run` sets once it has read this. Windows keeps it too: the updater starts the per-user
+/// NSIS installer with a plain ShellExecute, and the installer starts the new version the same way.
+static AUTOSTARTED: AtomicBool = AtomicBool::new(false);
+const RESTARTED_ENV: &str = "LIMUSIC_RESTARTED";
+
+/// Stay in the tray instead of showing the window: launched at login with "Start minimized to
+/// tray" on, and a tray icon to come back from. Asked by the startup safety net and by
+/// `show_main` once the SPA has mounted.
+fn should_start_minimized(db: &Db) -> bool {
+    AUTOSTARTED.load(Ordering::Relaxed)
+        && db.get_setting("start_minimized").as_deref() == Some("true")
+        && tray::available()
 }
 
 /// Tauri entry point. Applies the platform boot fixes (open-fd limit, NVIDIA/WebKit env), restores
@@ -234,6 +248,14 @@ pub fn run() {
     // forks, and cannot be raised for them afterwards.
     #[cfg(target_os = "linux")]
     raise_fd_limit();
+
+    // See `AUTOSTARTED`. Up here with the other env writes, before any thread exists to read it.
+    AUTOSTARTED.store(
+        std::env::args_os().any(|a| a == "--autostart")
+            && std::env::var_os(RESTARTED_ENV).is_none(),
+        Ordering::Relaxed,
+    );
+    std::env::set_var(RESTARTED_ENV, "1");
 
     // Two separate NVIDIA/WebKitGTK failures, two separate variables. Neither substitutes for
     // the other, which is the mistake ee48c55 made.
@@ -698,7 +720,8 @@ pub fn run() {
 
             // The window starts hidden and the SPA shows it once it has mounted, so the saved size
             // is already applied by then (#45). Safety net: if the frontend never gets that far,
-            // show it anyway rather than leaving the app with no window at all.
+            // show it anyway rather than leaving the app with no window at all. Not when starting
+            // in the tray, where the hidden window is the point.
             if let Some(w) = app.get_webview_window("main") {
                 if !should_start_minimized(&db) {
                     tauri::async_runtime::spawn(async move {
