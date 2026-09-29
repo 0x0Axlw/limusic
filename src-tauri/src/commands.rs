@@ -651,7 +651,7 @@ pub async fn close_mini(app: tauri::AppHandle) -> Result<(), String> {
 pub async fn show_main(state: St<'_>, window: tauri::WebviewWindow) -> Result<(), String> {
     let is_autostart = std::env::args().any(|arg| arg == "--autostart");
     let start_minimized = state.db.get_setting("start_minimized").as_deref() == Some("true");
-    if start_minimized && is_autostart {
+    if start_minimized && is_autostart && crate::tray::available() {
         return Ok(());
     }
     window.show().map_err(|e| e.to_string())?;

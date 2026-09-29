@@ -35,6 +35,10 @@ pub fn available() -> bool {
     AVAILABLE.load(Ordering::Relaxed)
 }
 
+pub fn set_available(val: bool) {
+    AVAILABLE.store(val, Ordering::Relaxed);
+}
+
 /// Bring the main window back from close-to-tray, minimize, or the mini player. Every "come back"
 /// path — tray menu, tray click, second launch, the widget's restore button — goes through here so
 /// they can't drift apart.

@@ -523,6 +523,7 @@ pub fn run() {
             // System tray: playback controls + show/quit while running in the background.
             if let Err(e) = tray::init(&handle) {
                 tracing::warn!(error = %e, "tray init failed (continuing without tray)");
+                tray::set_available(false);
             }
 
             // System-wide global hotkeys for playback control
@@ -695,7 +696,7 @@ pub fn run() {
             // show it anyway rather than leaving the app with no window at all.
             let is_autostart = std::env::args().any(|arg| arg == "--autostart");
             if let Some(w) = app.get_webview_window("main") {
-                if start_minimized && is_autostart {
+                if start_minimized && is_autostart && tray::available() {
                     let _ = w.hide();
                     tray::set_main_visible(app.handle(), false);
                 } else {
