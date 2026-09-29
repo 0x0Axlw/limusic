@@ -9,18 +9,23 @@
 //! round its own corners); the page leaves a hole where the picture goes and tells us where that is
 //! (`set_rect`).
 //!
-//! The widget tree, rebuilt once at startup around the one wry made:
+//! The widget tree, rebuilt once at startup from the one tao and wry made (GtkWindow > GtkBox >
+//! WebKitWebView):
 //!
 //! ```text
-//! GtkBox (Tauri's)
+//! GtkWindow
 //! └── GtkOverlay
-//!     ├── GtkBox          main child, empty: it only gives the overlay its size
+//!     ├── GtkBox          Tauri's, now empty: the main child, it only gives the overlay its size
 //!     ├── GtkGLArea       overlay child, placed at the hole by `get-child-position`
 //!     └── WebKitWebView   overlay child on top, filling the overlay
 //! ```
 //!
-//! Overlay children add nothing to the overlay's size request, so the picture's box can never hold
-//! the window open at a minimum size the way a GtkFixed child would.
+//! The overlay takes the box's place rather than going inside it because the webview's
+//! *grandparent* has to stay the window: tauri-runtime-wry's resize handler for undecorated
+//! windows runs on every click and touch in the webview, and unwraps `webview.parent().parent()`
+//! as a `gtk::Window`. Anything else there aborts the app on the first click (a panic in a GTK
+//! signal cannot unwind). Overlay children add nothing to the overlay's size request, so the
+//! picture's box can never hold the window open at a minimum size the way a GtkFixed child would.
 
 use std::cell::{Cell, RefCell};
 use std::ffi::{c_char, c_void, CString};
@@ -86,17 +91,23 @@ pub fn install(win: &tauri::WebviewWindow, state: Arc<AppState>) {
 }
 
 fn build(webview: webkit2gtk::WebView, state: Arc<AppState>) -> Result<(), &'static str> {
-    let parent = webview
+    let vbox = webview
         .parent()
         .and_then(|p| p.downcast::<gtk::Box>().ok())
         .ok_or("the webview is not in a GtkBox")?;
+    let window = vbox
+        .parent()
+        .and_then(|p| p.downcast::<gtk::Window>().ok())
+        .ok_or("the webview's box is not in a GtkWindow")?;
     // Which GL API GTK uses decides the loader: EGL on Wayland, GLX on X11 (GTK 3 has no EGL-on-X11).
     let display = gtk::gdk::Display::default().ok_or("no display")?;
     let wayland = display.type_().name() == "GdkWaylandDisplay";
     LOADER.get_or_init(|| load_gl_loader(wayland));
 
+    vbox.remove(&webview);
+    window.remove(&vbox);
     let overlay = gtk::Overlay::new();
-    overlay.add(&gtk::Box::new(gtk::Orientation::Vertical, 0));
+    overlay.add(&vbox);
     let area = gtk::GLArea::new();
     // Drawn when mpv has a frame, not on every redraw of the window around it.
     area.set_auto_render(false);
@@ -104,9 +115,8 @@ fn build(webview: webkit2gtk::WebView, state: Arc<AppState>) -> Result<(), &'sta
     area.set_no_show_all(true);
     overlay.add_overlay(&area);
     overlay.set_overlay_pass_through(&area, true);
-    parent.remove(&webview);
     overlay.add_overlay(&webview);
-    parent.pack_start(&overlay, true, true, 0);
+    window.add(&overlay);
     overlay.show_all();
     webview.grab_focus();
 
