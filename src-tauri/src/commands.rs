@@ -319,6 +319,9 @@ pub async fn set_setting(
     if !UI_SETTINGS.contains(&key.as_str()) {
         return Err(format!("unknown setting: {key}"));
     }
+    // A login entry registered before `--autostart` existed doesn't carry it, and without it the
+    // setting never applies. `enable` rewrites the entry. Before the write, so a failure leaves the
+    // setting off.
     if key == "start_minimized" && value == "true" {
         use tauri_plugin_autostart::ManagerExt;
         let al = app.autolaunch();
@@ -385,13 +388,6 @@ pub async fn set_setting(
             Ok(())
         };
         res.map_err(|e| format!("autostart: {e}"))?;
-    }
-    if key == "start_minimized" {
-        use tauri_plugin_autostart::ManagerExt;
-        let al = app.autolaunch();
-        if al.is_enabled().unwrap_or(false) {
-            al.enable().map_err(|e| format!("autostart: {e}"))?;
-        }
     }
     Ok(())
 }
