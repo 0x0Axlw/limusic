@@ -116,13 +116,20 @@
 
 	// Linux: the picture is drawn by mpv underneath the page, and the box below is a hole it shows
 	// through (src-tauri/src/nativevideo.rs). Not while the view flies in or out: the box moves every
-	// frame then, and the picture underneath cannot follow. 340 is the fly's 320 and a frame.
-	// Reopened mid-flight out, the view is the same component flying back in, so the timer is long
-	// spent: the end of that fly is what settles it, or the picture never came back.
+	// frame then, and the picture underneath cannot follow. The end of the fly is what settles it,
+	// never a timer: the fly starts only once the view's first frame is out, so after a slow one a
+	// 340 ms timer measured the box mid-flight, and a transform fires no observer to correct it
+	// (the picture sat 186 px low). Reopened mid-flight out, the view is the same component flying
+	// back in, and that fly's end settles it the same way.
 	let settled = $state(false);
+	let view: HTMLElement;
 	$effect(() => {
-		const timer = setTimeout(() => (settled = true), 340);
-		return () => clearTimeout(timer);
+		// Mounted without a fly (the intro only plays when the view itself opens), so no introend
+		// is coming. By the first frame Svelte has started the fly if there is one.
+		const frame = requestAnimationFrame(() => {
+			if (!view.getAnimations().length) settled = true;
+		});
+		return () => cancelAnimationFrame(frame);
 	});
 
 	/** Report the hole's box whenever it moves, and none while the window is hidden (the tray, the
@@ -167,6 +174,7 @@
 	transition:fly={{ y: '100%', duration: 320, easing: cubicOut }}
 	onoutrostart={() => (settled = false)}
 	onintroend={() => (settled = true)}
+	bind:this={view}
 	onpointerdown={(e) => ((pressedKeep = keeps(e.target)), (releasedKeep = false))}
 	onpointerup={(e) => (releasedKeep = keeps(e.target))}
 	onclick={onBackdropClick}
