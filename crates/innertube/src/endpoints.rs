@@ -616,6 +616,12 @@ impl InnerTube {
     ) -> Result<Vec<BrowseItem>, Error> {
         let value = self.browse(client, Some(browse_id), params).await?;
         let mut items = browse::parse_library(&value);
+        // A mood category is several shelves flattened into one grid, and YouTube puts the same
+        // playlist on more than one of them (Chill had 85 repeats). A repeat is fatal on the UI
+        // side for the same reason as in `library_grid`: the grid is keyed, and one duplicate key
+        // leaves the page on its skeleton forever. Issue #355.
+        let mut seen = std::collections::HashSet::new();
+        items.retain(|i| seen.insert(i.id.clone()));
         self.drop_video_cards(&mut items);
         self.drop_blocked_cards(&mut items);
         Ok(items)
