@@ -16,7 +16,8 @@
 		DiscordIcon,
 		Globe02Icon,
 		ArrowDown01Icon,
-		Alert02Icon
+		Alert02Icon,
+		LinkSquare02Icon
 	} from '@hugeicons/core-free-icons';
 	import { Button } from '$lib/components/ui/button';
 	import { Input } from '$lib/components/ui/input';
@@ -26,6 +27,7 @@
 	import { Alert, AlertDescription } from '$lib/components/ui/alert';
 	import * as Dialog from '$lib/components/ui/dialog';
 	import * as Select from '$lib/components/ui/select';
+	import * as Popover from '$lib/components/ui/popover';
 	import { HELP_COMBO } from '$lib/shortcuts';
 	import { copyText } from '$lib/clipboard';
 	import * as api from '$lib/api';
@@ -537,6 +539,8 @@
 	title: string;
 	desc?: string;
 	badge?: string;
+	/** After the title and badge, for a small info affordance that belongs to the title. */
+	extra?: Snippet;
 	control?: Snippet;
 	below?: Snippet;
 	tall?: boolean;
@@ -553,6 +557,7 @@
 							{o.badge}
 						</span>
 					{/if}
+					{#if o.extra}{@render o.extra()}{/if}
 				</div>
 				{#if o.desc}
 					<p class="mt-1 max-w-prose text-xs leading-relaxed text-muted-foreground">{o.desc}</p>
@@ -861,8 +866,8 @@
 										title: t('settings.playback.ambient_light'),
 										badge: t('settings.themes.experimental'),
 										desc: t('settings.playback.ambient_light_hint'),
+										extra: ambientGpu,
 										control: ambientSwitch,
-										below: ambientWarning,
 										tall: true
 									})}
 								{/if}
@@ -1112,20 +1117,39 @@
 {#snippet normalizeSwitch()}<Switch checked={normalizeOn} onCheckedChange={setNormalize} />{/snippet}
 {#snippet musicVideoSwitch()}<Switch checked={musicVideosOn} onCheckedChange={setMusicVideos} />{/snippet}
 {#snippet ambientSwitch()}<Switch checked={ambientOn} onCheckedChange={setAmbient} />{/snippet}
-{#snippet ambientWarning()}
-	<p class="flex max-w-prose items-start gap-1.5 text-xs leading-relaxed text-muted-foreground">
-		<HugeiconsIcon icon={Alert02Icon} size={14} strokeWidth={1.8} class="mt-0.5 shrink-0" />
-		<span>
-			{t('settings.playback.ambient_light_gpu')}
-			<button
-				type="button"
-				class="cursor-pointer underline underline-offset-2 transition-colors hover:text-foreground"
+<!-- The GPU note, behind a warning glyph by the title: it matters to the few whose card is weak,
+     and a paragraph under the switch read as a reason not to try it. A popover rather than a
+     tooltip, so it opens on a click or a key and can hold the link. -->
+{#snippet ambientGpu()}
+	<Popover.Root>
+		<Popover.Trigger
+			class="-m-1 cursor-pointer rounded-md p-1 text-muted-foreground transition-colors hover:text-foreground data-[state=open]:text-foreground"
+			aria-label={t('settings.playback.ambient_light_gpu_title')}
+			title={t('settings.playback.ambient_light_gpu_title')}
+		>
+			<HugeiconsIcon icon={Alert02Icon} size={14} strokeWidth={1.8} />
+		</Popover.Trigger>
+		<Popover.Content side="top" align="start" class="w-80 gap-3">
+			<div class="flex items-start gap-2.5">
+				<HugeiconsIcon icon={Alert02Icon} size={16} strokeWidth={1.8} class="mt-0.5 shrink-0" />
+				<div class="min-w-0">
+					<p class="text-sm font-semibold">{t('settings.playback.ambient_light_gpu_title')}</p>
+					<p class="mt-1 text-xs leading-relaxed text-muted-foreground">
+						{t('settings.playback.ambient_light_gpu')}
+					</p>
+				</div>
+			</div>
+			<Button
+				variant="secondary"
+				size="sm"
+				class="self-start"
 				onclick={() => api.openExternal('https://www.videocardbenchmark.net/gpu_list.php')}
 			>
+				<HugeiconsIcon icon={LinkSquare02Icon} size={15} strokeWidth={1.8} />
 				{t('settings.playback.ambient_light_gpu_check')}
-			</button>
-		</span>
-	</p>
+			</Button>
+		</Popover.Content>
+	</Popover.Root>
 {/snippet}
 {#snippet hideVideoSwitch()}<Switch checked={hideVideosOn} onCheckedChange={setHideVideos} />{/snippet}
 {#snippet lastfmPrimarySwitch()}<Switch
