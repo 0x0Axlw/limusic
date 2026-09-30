@@ -411,6 +411,11 @@ export const forgetVideoStream = (videoId: string) =>
 export const nativeVideoRect = (rect: [number, number, number, number] | null) =>
 	invoke<boolean>('native_video_rect', { rect });
 
+/** Linux: the newest small frame of mpv's picture other than `after`, for the ambient light, as
+ *  `[seq, w, h]` little-endian u32s and then RGBA rows bottom-up. Empty when none came within a
+ *  quarter second. Asking is also what keeps Rust grabbing them (nativevideo.rs). */
+export const ambientFrame = (after: number) => invoke<ArrayBuffer>('ambient_frame', { after });
+
 /** What the event stream already reported, for a webview that started after it did. */
 export interface PlaybackSnapshot {
 	now: NowPlaying | null;

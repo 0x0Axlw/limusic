@@ -15,7 +15,8 @@
 		Coffee02Icon,
 		DiscordIcon,
 		Globe02Icon,
-		ArrowDown01Icon
+		ArrowDown01Icon,
+		Alert02Icon
 	} from '@hugeicons/core-free-icons';
 	import { Button } from '$lib/components/ui/button';
 	import { Input } from '$lib/components/ui/input';
@@ -339,6 +340,8 @@
 	// Off until the setting is turned on: still experimental, so nobody gets video they didn't ask
 	// for. Same test in `player.svelte.ts`, which hydrates `prefs` at launch.
 	const musicVideosOn = $derived(settings.music_videos === 'true');
+	// Off by default, and only offered with music videos on: it costs real GPU time on every frame.
+	const ambientOn = $derived(settings.ambient_light === 'true');
 	// Off by default: the full byline is what YouTube credits, and cutting it is a preference
 	// with a real failure mode (a comma-joined duo name), not a fix (issue #231).
 	const lastfmPrimaryOn = $derived(settings.lastfm_primary_artist === 'true');
@@ -413,6 +416,13 @@
 		settings.music_videos = on ? 'true' : 'false';
 		prefs.musicVideos = on;
 		await api.setSetting('music_videos', settings.music_videos);
+	}
+
+	// `prefs` after the write: on Linux the write is also what turns WebGL on for the glow.
+	async function setAmbient(on: boolean) {
+		settings.ambient_light = on ? 'true' : 'false';
+		await api.setSetting('ambient_light', settings.ambient_light);
+		prefs.ambient = on;
 	}
 
 	async function setHideVideos(on: boolean) {
@@ -846,6 +856,16 @@
 									control: musicVideoSwitch,
 									tall: true
 								})}
+								{#if musicVideosOn}
+									{@render row({
+										title: t('settings.playback.ambient_light'),
+										badge: t('settings.themes.experimental'),
+										desc: t('settings.playback.ambient_light_hint'),
+										control: ambientSwitch,
+										below: ambientWarning,
+										tall: true
+									})}
+								{/if}
 								{@render row({
 									title: t('settings.playback.hide_videos'),
 									desc: t('settings.playback.hide_videos_hint'),
@@ -1091,6 +1111,22 @@
 	/>{/snippet}
 {#snippet normalizeSwitch()}<Switch checked={normalizeOn} onCheckedChange={setNormalize} />{/snippet}
 {#snippet musicVideoSwitch()}<Switch checked={musicVideosOn} onCheckedChange={setMusicVideos} />{/snippet}
+{#snippet ambientSwitch()}<Switch checked={ambientOn} onCheckedChange={setAmbient} />{/snippet}
+{#snippet ambientWarning()}
+	<p class="flex max-w-prose items-start gap-1.5 text-xs leading-relaxed text-muted-foreground">
+		<HugeiconsIcon icon={Alert02Icon} size={14} strokeWidth={1.8} class="mt-0.5 shrink-0" />
+		<span>
+			{t('settings.playback.ambient_light_gpu')}
+			<button
+				type="button"
+				class="cursor-pointer underline underline-offset-2 transition-colors hover:text-foreground"
+				onclick={() => api.openExternal('https://www.videocardbenchmark.net/gpu_list.php')}
+			>
+				{t('settings.playback.ambient_light_gpu_check')}
+			</button>
+		</span>
+	</p>
+{/snippet}
 {#snippet hideVideoSwitch()}<Switch checked={hideVideosOn} onCheckedChange={setHideVideos} />{/snippet}
 {#snippet lastfmPrimarySwitch()}<Switch
 		checked={lastfmPrimaryOn}

@@ -33,6 +33,7 @@
 	import QueueList from './QueueList.svelte';
 	import type { QueueScrollMemory } from '$lib/queue-history';
 	import LyricsView from './LyricsView.svelte';
+	import Ambient from './Ambient.svelte';
 
 	// Off in settings, this view drops its tabs and the queue/lyrics panels stay in charge of both
 	// (see +layout): they paint above this (z-30 over z-20), so all this needs is to hand back the
@@ -69,6 +70,8 @@
 	// rather than unmounting the tabs: LyricsView must survive it or it refetches and loses its
 	// scroll position.
 	let big = $state(false);
+	/** The picture's box, for the ambient light to glow around. */
+	let picBox = $state<HTMLElement | null>(null);
 	$effect(() => {
 		if (np.tab !== 'lyrics') big = false; // nothing to enlarge on the queue tab
 	});
@@ -186,6 +189,11 @@
 	     translateZ(0) and contain:paint all measured as noise), and the cost tracks the blur
 	     radius rather than the image. A video fills the view on its own, so there is nothing to
 	     replace it with. -->
+	<!-- The ambient light (Settings > Video): the video's colours spilling into the view around it. Not
+	     under theater mode, which covers this view, and not with the lyrics enlarged over the picture. -->
+	{#if prefs.ambient && showVideo() && picBox && !ui.theaterOpen}
+		<Ambient box={picBox} />
+	{/if}
 	{#if appearance.artworkBackground && !showVideo() && srcs[2] && !bgFailed}
 		<img
 			src={srcs[2]}
@@ -222,6 +230,7 @@
 				     button rather than nested inside it (nested buttons are invalid HTML and the
 				     inner one never reliably gets the click). -->
 				<div
+					bind:this={picBox}
 					class="relative w-full {showVideo() ? 'max-w-[var(--vid)]' : 'max-w-[var(--art)]'}"
 					onwheel={onWheel}
 					data-np-keep

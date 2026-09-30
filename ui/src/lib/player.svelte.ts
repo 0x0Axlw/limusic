@@ -61,7 +61,9 @@ export const prefs = $state({
 	discordRpc: false,
 	/** Linux: mpv draws the music video under the page (nativevideo.rs) instead of a `<video>`
 	 *  element. Cleared if it turns out there is no GL surface, which hands the picture back. */
-	nativeVideo: false
+	nativeVideo: false,
+	/** `ambient_light`: the player view glows with the music video's colours (Ambient.svelte). */
+	ambient: false
 });
 
 /** Linux: the tracks mpv has the music video for (`video-ready`), so the view knows a picture is
@@ -1487,6 +1489,7 @@ export function initApp(mini = false): () => void {
 		.then((s) => {
 			prefs.musicVideos = s.music_videos === 'true';
 			prefs.nativeVideo = s.native_video === 'true';
+			prefs.ambient = s.ambient_light === 'true';
 			prefs.discordRpc = s.discord_rpc === 'true';
 			// Half of what the app shows is YouTube's own text, and Rust asks for it in the language
 			// this setting holds (#274). It reads the setting at startup, before the SPA exists to
