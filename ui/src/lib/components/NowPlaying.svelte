@@ -117,6 +117,8 @@
 	// Linux: the picture is drawn by mpv underneath the page, and the box below is a hole it shows
 	// through (src-tauri/src/nativevideo.rs). Not while the view flies in or out: the box moves every
 	// frame then, and the picture underneath cannot follow. 340 is the fly's 320 and a frame.
+	// Reopened mid-flight out, the view is the same component flying back in, so the timer is long
+	// spent: the end of that fly is what settles it, or the picture never came back.
 	let settled = $state(false);
 	$effect(() => {
 		const timer = setTimeout(() => (settled = true), 340);
@@ -164,6 +166,7 @@
 <div
 	transition:fly={{ y: '100%', duration: 320, easing: cubicOut }}
 	onoutrostart={() => (settled = false)}
+	onintroend={() => (settled = true)}
 	onpointerdown={(e) => ((pressedKeep = keeps(e.target)), (releasedKeep = false))}
 	onpointerup={(e) => (releasedKeep = keeps(e.target))}
 	onclick={onBackdropClick}
