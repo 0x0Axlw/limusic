@@ -221,7 +221,7 @@ pub async fn get_queue(state: St<'_>) -> Result<serde_json::Value, String> {
 /// `visitor_data`) and internal blobs (`queue_json`, `queue_index`, `queue_position`) never cross
 /// into the webview: they'd otherwise ship the login credential to the renderer on every open, and
 /// the webview can't overwrite them either.
-const UI_SETTINGS: [&str; 26] = [
+const UI_SETTINGS: [&str; 27] = [
     "volume",
     "proxy",
     "quality",
@@ -241,6 +241,7 @@ const UI_SETTINGS: [&str; 26] = [
     "update_channel",
     "lyrics_providers",
     "music_videos",
+    "ambient_light",
     "sticky_shuffle",
     "system_titlebar",
     "lastfm_primary_artist",
@@ -280,6 +281,21 @@ pub async fn video_stream(
     }
 }
 
+/// The glow around the music video, where mpv draws the picture (Linux): the newest small frame
+/// other than `after` (nativevideo.rs has the layout), or nothing if none came within a quarter
+/// second. Raw bytes, so the ~22 KB a frame skips JSON both ways.
+#[tauri::command]
+pub async fn ambient_frame(after: u32) -> tauri::ipc::Response {
+    #[cfg(target_os = "linux")]
+    let frame = crate::nativevideo::next_frame(after).await.map(|f| f.to_vec());
+    #[cfg(not(target_os = "linux"))]
+    let frame = {
+        let _ = after;
+        None
+    };
+    tauri::ipc::Response::new(frame.unwrap_or_default())
+}
+
 /// Where the page's hole for the music video is (`[x, y, w, h]`, CSS pixels, viewport-relative),
 /// or `None` when it has none. mpv draws the picture there, underneath the webview
 /// (nativevideo.rs). `false` means no picture is up, and for a rect that there never will be: the
@@ -301,10 +317,12 @@ pub async fn native_video_rect(
 
 /// Forget a resolved music-video URL, so the next `video_stream` for this id resolves a fresh one.
 /// The player view calls this when the `<video>` element fails to load, which is what an expired
-/// or revoked googlevideo link looks like from the webview.
+/// or revoked googlevideo link looks like from the webview. It also sends that track's next resolve
+/// to VISIONOS first, so a WEB_REMIX URL that failed is not rebuilt from the same reply.
 #[tauri::command]
 pub async fn forget_video_stream(state: St<'_>, video_id: String) -> Result<(), String> {
     state.forget_video_url(&video_id);
+    state.orchestrator.mark_video_failed(&video_id);
     Ok(())
 }
 
@@ -361,6 +379,10 @@ pub async fn set_setting(
     // A music video track already playing gets its picture now rather than from the next track.
     if key == "music_videos" && value == "true" {
         state.inner().attach_current_video().await;
+    }
+    #[cfg(target_os = "linux")]
+    if key == "ambient_light" {
+        crate::set_webgl(&app, value == "true");
     }
     // Presence connects/clears the moment it's toggled — the user shouldn't have to skip a track
     // to see it take effect.

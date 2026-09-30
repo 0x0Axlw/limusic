@@ -559,6 +559,27 @@ impl AppState {
         });
     }
 
+    /// mpv could not open the picture it was handed for `audio` (only the playing deck ever opens
+    /// one). Drop that URL and try once more, which now goes to VISIONOS first
+    /// (`Orchestrator::mark_video_failed`); a second failure within the TTL leaves the artwork.
+    ///
+    /// Ignored once `audio` is no longer the file playing: the open is a round trip, and a skip or
+    /// a crossfade landing during it would otherwise pin the failure on the next track. A crossfade
+    /// swaps decks before it sends `TrackEnded`, and events arrive in order, so by the time the
+    /// next track's own failure gets here the queue has moved to it too. The old track keeps its
+    /// dead URL until it next plays, fails again, and is handled then.
+    pub async fn on_video_failed(self: &Arc<Self>, audio: &str) {
+        if self.player.current_path().as_deref() != Some(audio) {
+            tracing::debug!("video: a failed picture for a track no longer playing, ignored");
+            return;
+        }
+        let Some(item) = self.current_item().await else { return };
+        self.forget_video_url(&item.video_id);
+        if self.orchestrator.mark_video_failed(&item.video_id) {
+            self.attach_current_video().await;
+        }
+    }
+
     /// [`Self::attach_video`] for the track already playing, when music videos were just turned on.
     pub async fn attach_current_video(self: &Arc<Self>) {
         if let (Some(item), Some(path)) = (self.current_item().await, self.player.current_path()) {
