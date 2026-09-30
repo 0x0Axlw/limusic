@@ -56,8 +56,13 @@ export function parkVideo() {
 }
 
 // --- Linux: mpv draws the picture under the page (src-tauri/src/nativevideo.rs) ----------------
-// The window is transparent, so a hole with nothing under it shows the desktop. The hole therefore
-// opens only once Rust says the picture is in place, and closes before Rust takes it away.
+// The window is transparent, so a hole with nothing under it shows the desktop. GTK draws each frame
+// with whatever the webview last presented, and a page change takes a frame or two to get there,
+// while Rust moves the picture on its very next one. So the hole never gets ahead of the picture:
+// it shrinks at once to what the picture covers both before and after, Rust moves the picture only
+// once that has been painted, and the hole opens the rest once Rust says the picture is there.
+// Moving them together showed the desktop for a frame whenever the picture went away (an opened
+// link, whose video is not resolved yet) or moved.
 
 let holeSeq = 0;
 let holeSent: string | null = null;
@@ -68,19 +73,30 @@ export function setHole(r: Hole | null) {
 	if (key === holeSent) return;
 	holeSent = key;
 	const seq = ++holeSeq;
-	if (!r) {
-		video.hole = null;
-		api.nativeVideoRect(null).catch(() => {});
-		return;
-	}
-	// Already up and only moving: move the hole with it rather than a round trip behind.
-	if (video.hole) video.hole = r;
-	api.nativeVideoRect([r.x, r.y, r.w, r.h])
-		.then((up) => {
-			if (seq !== holeSeq) return;
-			video.hole = up ? r : null;
-			// No GL surface, and there never will be: back to the <video> element.
-			if (!up) prefs.nativeVideo = false;
-		})
-		.catch(() => {});
+	video.hole = r && video.hole && overlap(video.hole, r);
+	const send = () => {
+		if (seq !== holeSeq) return;
+		api.nativeVideoRect(r && [r.x, r.y, r.w, r.h])
+			.then((up) => {
+				if (seq !== holeSeq || !r) return;
+				video.hole = up ? r : null;
+				// No GL surface, and there never will be: back to the <video> element.
+				if (!up) prefs.nativeVideo = false;
+			})
+			.catch(() => {});
+	};
+	// Two frames: the first paints the smaller hole, the second runs once that one is out. A hidden
+	// page gets no frames, and nobody can see it anyway.
+	// ponytail: a live window resize keeps restarting this, so the picture catches up when the drag
+	// stops, with page background at the new edges meanwhile. Throttle instead if that shows.
+	if (document.hidden) send();
+	else requestAnimationFrame(() => requestAnimationFrame(send));
+}
+
+function overlap(a: Hole, b: Hole): Hole | null {
+	const x = Math.max(a.x, b.x);
+	const y = Math.max(a.y, b.y);
+	const w = Math.min(a.x + a.w, b.x + b.w) - x;
+	const h = Math.min(a.y + a.h, b.y + b.h) - y;
+	return w > 0 && h > 0 ? { x, y, w, h } : null;
 }
