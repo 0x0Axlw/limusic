@@ -232,6 +232,12 @@ fn fatal(what: &str, detail: &str) -> ! {
 static AUTOSTARTED: AtomicBool = AtomicBool::new(false);
 const RESTARTED_ENV: &str = "LIMUSIC_RESTARTED";
 
+/// What a cold launch was given, so `limusic-app 'https://music.youtube.com/watch?v=…'` opens the
+/// link once the SPA has mounted (#348). Taken once by `take_launch_args`. A launch while we are
+/// already running reaches the single-instance callback instead, which emits `open-link`. Raw
+/// strings either way: `parseYtLink` in the UI decides what is a link, so there is one parser.
+pub(crate) static LAUNCH_ARGS: std::sync::Mutex<Vec<String>> = std::sync::Mutex::new(Vec::new());
+
 /// Stay in the tray instead of showing the window: launched at login with "Start minimized to
 /// tray" on, and a tray icon to come back from. Asked by the startup safety net and by
 /// `show_main` once the SPA has mounted.
@@ -256,6 +262,12 @@ pub fn run() {
             && std::env::var_os(RESTARTED_ENV).is_none(),
         Ordering::Relaxed,
     );
+    // Not on a restart either: the relaunch replays argv, so the linked song would start over after
+    // every update. `args_os`, because `args` panics on an argument that is not UTF-8.
+    if std::env::var_os(RESTARTED_ENV).is_none() {
+        *LAUNCH_ARGS.lock().unwrap() =
+            std::env::args_os().skip(1).map(|a| a.to_string_lossy().into_owned()).collect();
+    }
     std::env::set_var(RESTARTED_ENV, "1");
 
     // Two separate NVIDIA/WebKitGTK failures, two separate variables. Neither substitutes for
@@ -318,8 +330,12 @@ pub fn run() {
     //
     //     LIMUSIC_MULTI=1 XDG_DATA_HOME=/tmp/limusic-b ./target/debug/limusic-app
     if std::env::var_os("LIMUSIC_MULTI").is_none() {
-        builder = builder.plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+        builder = builder.plugin(tauri_plugin_single_instance::init(|app, args, _cwd| {
             tray::show_main(app);
+            // `limusic-app <link>` against this instance (#348). argv[0] leads on every platform.
+            if args.len() > 1 {
+                let _ = app.emit_to("main", "open-link", &args[1..]);
+            }
         }));
     }
 
@@ -788,6 +804,7 @@ pub fn run() {
             commands::open_mini,
             commands::close_mini,
             commands::show_main,
+            commands::take_launch_args,
             commands::get_home,
             commands::get_home_more,
             commands::get_library,

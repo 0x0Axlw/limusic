@@ -665,6 +665,12 @@ pub async fn close_mini(app: tauri::AppHandle) -> Result<(), String> {
     Ok(())
 }
 
+/// The arguments this process was launched with, handed over once (#348). See `LAUNCH_ARGS`.
+#[tauri::command]
+pub fn take_launch_args() -> Vec<String> {
+    std::mem::take(&mut *crate::LAUNCH_ARGS.lock().unwrap())
+}
+
 #[tauri::command]
 pub async fn show_main(state: St<'_>, window: tauri::WebviewWindow) -> Result<bool, String> {
     if crate::should_start_minimized(&state.db) {
