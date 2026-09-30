@@ -1069,6 +1069,7 @@ fn spawn_event_pump(
                     tracing::warn!(error = %msg, "lookahead preload failed");
                     state.on_lookahead_failed().await;
                 }
+                PlayerEvent::VideoFailed => state.on_video_failed().await,
                 PlayerEvent::Error(msg) => {
                     tracing::error!(error = %msg, "player error");
                     let _ = app.emit("playback-error", serde_json::json!({ "message": msg }));

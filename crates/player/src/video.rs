@@ -162,6 +162,7 @@ fn add_video(decks: &Arc<Decks>, deck: usize, url: String) {
     let _ = std::thread::Builder::new().name("mpv-video-add".into()).spawn(move || {
         if let Err(e) = mpv.command("video-add", &[&quoted(&url), "auto"]) {
             tracing::warn!(deck, error = %e, "video: mpv could not open the picture");
+            let _ = decks.tx.send(crate::PlayerEvent::VideoFailed);
             return;
         }
         let _serial = decks.videos.lock().unwrap();

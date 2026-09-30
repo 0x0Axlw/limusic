@@ -559,6 +559,17 @@ impl AppState {
         });
     }
 
+    /// mpv could not open the picture it was handed for the playing track (only the playing deck
+    /// ever opens one). Drop that URL and try once more, which now goes to VISIONOS first
+    /// (`Orchestrator::mark_video_failed`); a second failure within the TTL leaves the artwork.
+    pub async fn on_video_failed(self: &Arc<Self>) {
+        let Some(item) = self.current_item().await else { return };
+        self.forget_video_url(&item.video_id);
+        if self.orchestrator.mark_video_failed(&item.video_id) {
+            self.attach_current_video().await;
+        }
+    }
+
     /// [`Self::attach_video`] for the track already playing, when music videos were just turned on.
     pub async fn attach_current_video(self: &Arc<Self>) {
         if let (Some(item), Some(path)) = (self.current_item().await, self.player.current_path()) {
