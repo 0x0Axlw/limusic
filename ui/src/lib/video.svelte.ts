@@ -41,6 +41,9 @@ export function registerVideo(v: HTMLVideoElement, park: HTMLElement) {
 	park.appendChild(v);
 }
 
+/** The live element, for the ambient light to read frames from. */
+export const videoElement = () => node;
+
 /** Put the picture in `box`. Synchronous on purpose: a media element that is out of the document
  *  across a microtask gets paused by the spec's removal steps, and a paused picture is exactly the
  *  desync this whole thing exists to avoid. */

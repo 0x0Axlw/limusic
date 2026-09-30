@@ -87,7 +87,8 @@ fn spawn_heap_trimmer() {
 /// `media` is the one exception, and only the main window passes `true`: the player view draws a
 /// `<video>` for music videos (plan 031). That is a plain `<video src>`, so `mediasource`,
 /// `media_stream`, `media_capabilities`, `encrypted_media`, `webaudio`, `webrtc` and `webgl` all
-/// stay off. The mini player has no video surface, so it keeps the whole media stack off.
+/// stay off. The mini player has no video surface, so it keeps the whole media stack off. WebGL
+/// comes back on in the main window only while the ambient light is on ([`set_webgl`]).
 ///
 /// Applies to one webview, because WebKit settings are per-view: the main window and the mini
 /// player each cost their own web process, so each has to be told. The hidden cipher/PoToken
@@ -130,6 +131,22 @@ fn tune_webview(win: &tauri::WebviewWindow, media: bool) {
             tracing::info!(label, media, "webkit: DocumentBrowser cache, page cache + webgl off")
         }
         Err(e) => tracing::warn!(label, error = %e, "webkit tuning failed (continuing)"),
+    }
+}
+
+/// WebGL in the main window, which [`tune_webview`] turns off: the ambient light draws its glow with
+/// it (ui/src/lib/ambient.ts), so it is on exactly while that setting is. WebKit checks the setting
+/// when the page asks for a context, so a change applies without a reload.
+#[cfg(target_os = "linux")]
+pub(crate) fn set_webgl(app: &tauri::AppHandle, on: bool) {
+    use webkit2gtk::{SettingsExt, WebViewExt};
+
+    if let Some(win) = app.get_webview_window("main") {
+        let _ = win.with_webview(move |wv| {
+            if let Some(settings) = WebViewExt::settings(&wv.inner()) {
+                settings.set_enable_webgl(on);
+            }
+        });
     }
 }
 
@@ -759,6 +776,9 @@ pub fn run() {
             #[cfg(target_os = "linux")]
             {
                 tune_webview_labelled(app.handle(), "main", true);
+                if db.get_setting("ambient_light").as_deref() == Some("true") {
+                    set_webgl(app.handle(), true);
+                }
                 if let Some(w) = app.get_webview_window("main") {
                     nativevideo::install(&w, video_state);
                 }
@@ -793,6 +813,7 @@ pub fn run() {
             commands::video_stream,
             commands::forget_video_stream,
             commands::native_video_rect,
+            commands::ambient_frame,
             commands::get_settings,
             commands::set_setting,
             commands::get_global_hotkeys,
