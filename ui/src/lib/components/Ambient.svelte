@@ -118,7 +118,10 @@
 		let take = () => {};
 		if (native) {
 			// Rust holds each request up to a quarter second for a new frame, so this asks about as
-			// often as frames come, and four times a second while paused.
+			// often as frames come, and four times a second while paused. Nothing may end this loop
+			// but the unmount: the component outlives most track changes, so a loop that stopped
+			// on one odd reply left the glow dark until the setting was turned off and on.
+			const sleep = (ms: number) => new Promise<null>((r) => setTimeout(r, ms, null));
 			(async () => {
 				while (alive) {
 					if (document.hidden) {
@@ -127,17 +130,25 @@
 						);
 						continue;
 					}
-					const buf = await api.ambientFrame(seq).catch(() => null);
-					if (!alive) break;
-					if (!buf) await new Promise((r) => setTimeout(r, 1000));
-					if (!buf || buf.byteLength <= 12) continue;
-					const head = new DataView(buf);
-					seq = head.getUint32(0, true);
-					const w = head.getUint32(4, true);
-					const h = head.getUint32(8, true);
-					const rgba = new Uint8Array(buf, 12);
-					upload = () => glow!.frame({ w, h, rgba });
-					kick();
+					try {
+						// Raced, so a request that never comes back cannot hold the loop either.
+						const reply = await Promise.race([api.ambientFrame(seq), sleep(2000)]);
+						if (!alive) break;
+						const buf = Array.isArray(reply)
+							? Uint8Array.from(reply)
+							: reply && new Uint8Array(reply);
+						if (!buf || buf.length <= 12) continue;
+						const head = new DataView(buf.buffer, buf.byteOffset, 12);
+						seq = head.getUint32(0, true);
+						const w = head.getUint32(4, true);
+						const h = head.getUint32(8, true);
+						const rgba = buf.subarray(12);
+						upload = () => glow!.frame({ w, h, rgba });
+						kick();
+					} catch (e) {
+						logUi('warn', `ambient light: frame request failed: ${e}`);
+						await sleep(1000);
+					}
 				}
 			})();
 		} else {
@@ -182,7 +193,12 @@
 		}
 
 		// A driver reset takes the context. Allow it back, then rebuild on it.
-		const onLost = (e: Event) => e.preventDefault();
+		// ponytail: waits for WebKit to restore it. If a loss that never comes back shows up in the
+		// log, rebuild on a fresh canvas instead.
+		const onLost = (e: Event) => {
+			e.preventDefault();
+			logUi('warn', 'ambient light: WebGL context lost');
+		};
 		const onRestored = () => {
 			const made = createGlow(canvas);
 			if (typeof made !== 'string') glow = made;
