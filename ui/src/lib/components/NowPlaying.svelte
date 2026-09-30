@@ -130,10 +130,14 @@
 			const r = el.getBoundingClientRect();
 			setHole({ x: r.left, y: r.top, w: r.width, h: r.height });
 		};
-		// The box, and the window: every layout change that moves it also resizes one of them.
+		// The box, the window, and this view: every layout change that moves the box also resizes
+		// one of them. The view is the one that only moves it: collapsing the sidebar widens the view
+		// and slides the box over at the same size, which left the picture where the box had been.
 		const ro = new ResizeObserver(measure);
 		ro.observe(el);
 		ro.observe(document.documentElement);
+		const view = el.closest('[data-np-view]');
+		if (view) ro.observe(view);
 		document.addEventListener('visibilitychange', measure);
 		return () => {
 			ro.disconnect();
@@ -160,6 +164,7 @@
 	onpointerdown={(e) => ((pressedKeep = keeps(e.target)), (releasedKeep = false))}
 	onpointerup={(e) => (releasedKeep = keeps(e.target))}
 	onclick={onBackdropClick}
+	data-np-view
 	class="absolute inset-y-0 left-16 right-0 z-20 flex justify-center overflow-hidden px-4 py-4 {video.hole
 		? ''
 		: 'bg-background'} sm:px-6 sm:py-6 lg:px-10 {ui.sidebarCollapsed
