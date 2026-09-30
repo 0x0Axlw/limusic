@@ -65,7 +65,7 @@ impl Player {
             v.loaded[deck].as_deref() == Some(audio_url)
         };
         if now {
-            add_video(&self.decks, deck, video_url.to_owned());
+            add_video(&self.decks, deck, audio_url.to_owned(), video_url.to_owned());
         }
     }
 
@@ -129,11 +129,11 @@ pub(crate) fn file_loaded(decks: &Arc<Decks>, deck: usize) {
         let path = mpv.get_property::<String>("path").ok();
         let video = {
             let mut v = decks.videos.lock().unwrap();
-            v.loaded[deck] = path;
+            v.loaded[deck] = path.clone();
             (deck == decks.active.load(Ordering::SeqCst)).then(|| v.video_for(deck)).flatten()
         };
-        if let Some(url) = video {
-            add_video(&decks, deck, url);
+        if let (Some(audio), Some(url)) = (path, video) {
+            add_video(&decks, deck, audio, url);
         }
     });
 }
@@ -142,9 +142,12 @@ pub(crate) fn file_loaded(decks: &Arc<Decks>, deck: usize) {
 pub(crate) fn deck_swapped(decks: &Arc<Decks>) {
     apply_vid(decks);
     let deck = decks.active.load(Ordering::SeqCst);
-    let video = decks.videos.lock().unwrap().video_for(deck);
-    if let Some(url) = video {
-        add_video(decks, deck, url);
+    let (audio, video) = {
+        let v = decks.videos.lock().unwrap();
+        (v.loaded[deck].clone(), v.video_for(deck))
+    };
+    if let (Some(audio), Some(url)) = (audio, video) {
+        add_video(decks, deck, audio, url);
     }
 }
 
@@ -156,13 +159,15 @@ pub(crate) fn deck_swapped(decks: &Arc<Decks>) {
 /// picture during it set `vid=auto` while there was no track to pick, the track then arrived
 /// unselected, and setting `auto` again is a no-op in mpv. That was the black box after a track
 /// change or an opened link, which only closing and reopening the view (`no` then `auto`) cleared.
-fn add_video(decks: &Arc<Decks>, deck: usize, url: String) {
+///
+/// `audio` is the file the picture belongs to, which a failure names.
+fn add_video(decks: &Arc<Decks>, deck: usize, audio: String, url: String) {
     let Some(mpv) = decks.mpv(deck).cloned() else { return };
     let decks = decks.clone();
     let _ = std::thread::Builder::new().name("mpv-video-add".into()).spawn(move || {
         if let Err(e) = mpv.command("video-add", &[&quoted(&url), "auto"]) {
             tracing::warn!(deck, error = %e, "video: mpv could not open the picture");
-            let _ = decks.tx.send(crate::PlayerEvent::VideoFailed);
+            let _ = decks.tx.send(crate::PlayerEvent::VideoFailed(audio));
             return;
         }
         let _serial = decks.videos.lock().unwrap();

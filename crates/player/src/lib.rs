@@ -54,9 +54,11 @@ pub enum PlayerEvent {
     /// user is hearing; what is owed is evicting the next track's cached URL, see
     /// `AppState::on_lookahead_failed`.
     LookaheadFailed(String),
-    /// mpv could not open the music video it was handed for the playing track. The sound is
-    /// unaffected; the app decides whether another stream for the picture is worth trying.
-    VideoFailed,
+    /// mpv could not open the music video for the audio file it names (exactly as mpv was handed
+    /// it). The sound is unaffected; the app decides whether another stream for the picture is
+    /// worth trying. The open is a network round trip, so a skip or a crossfade can land first,
+    /// and the file named is then no longer the one playing.
+    VideoFailed(String),
     Error(String),
 }
 
