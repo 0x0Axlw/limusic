@@ -404,6 +404,13 @@ export const videoStream = (videoId: string, maxHeight: number) =>
 export const forgetVideoStream = (videoId: string) =>
 	invoke<void>('forget_video_stream', { videoId });
 
+/** Linux: where the page's hole for the music video is (`[x, y, w, h]`, CSS pixels, relative to
+ *  the viewport), or null when there is none. mpv draws the picture there, under the webview. Resolves
+ *  whether the picture is up; `false` for a rect means it never will be (no GL), so fall back to
+ *  the `<video>` element. */
+export const nativeVideoRect = (rect: [number, number, number, number] | null) =>
+	invoke<boolean>('native_video_rect', { rect });
+
 /** What the event stream already reported, for a webview that started after it did. */
 export interface PlaybackSnapshot {
 	now: NowPlaying | null;
@@ -712,6 +719,9 @@ export const onRating = (cb: (videoId: string, rating: Rating) => void): Promise
 	listen<{ videoId: string; rating: Rating }>('rating', (e) =>
 		cb(e.payload.videoId, e.payload.rating)
 	);
+/** Linux: mpv has this track's music video (or will as soon as the track starts). */
+export const onVideoReady = (cb: (videoId: string) => void): Promise<UnlistenFn> =>
+	listen<string>('video-ready', (e) => cb(e.payload));
 export const onQueueChanged = (cb: (q: QueueState) => void): Promise<UnlistenFn> =>
 	listen<QueueState>('queue-changed', (e) => cb(e.payload));
 /**
@@ -751,6 +761,11 @@ export const onQueueAppended = (cb: (q: QueueAppended) => void): Promise<Unliste
 /** Main window shown/hidden (close-to-tray, the mini player). WebKitGTK never tells the page. */
 export const onUiVisible = (cb: (v: boolean) => void): Promise<UnlistenFn> =>
 	listen<boolean>('ui-visible', (e) => cb(e.payload));
+/** `limusic-app <link>` (#348): the arguments a cold launch was given, handed over once... */
+export const takeLaunchArgs = () => invoke<string[]>('take_launch_args');
+/** ...and those of a second launch while this one runs. */
+export const onOpenLink = (cb: (args: string[]) => void): Promise<UnlistenFn> =>
+	listen<string[]>('open-link', (e) => cb(e.payload));
 export const onPosition = (cb: (p: number) => void): Promise<UnlistenFn> =>
 	listen<{ position: number }>('position', (e) => cb(e.payload.position));
 export const onDuration = (cb: (d: number) => void): Promise<UnlistenFn> =>
