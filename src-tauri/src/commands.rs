@@ -301,10 +301,12 @@ pub async fn native_video_rect(
 
 /// Forget a resolved music-video URL, so the next `video_stream` for this id resolves a fresh one.
 /// The player view calls this when the `<video>` element fails to load, which is what an expired
-/// or revoked googlevideo link looks like from the webview.
+/// or revoked googlevideo link looks like from the webview. It also sends that track's next resolve
+/// to VISIONOS first, so a WEB_REMIX URL that failed is not rebuilt from the same reply.
 #[tauri::command]
 pub async fn forget_video_stream(state: St<'_>, video_id: String) -> Result<(), String> {
     state.forget_video_url(&video_id);
+    state.orchestrator.mark_video_failed(&video_id);
     Ok(())
 }
 
