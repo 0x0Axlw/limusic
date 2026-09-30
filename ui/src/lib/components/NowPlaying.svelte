@@ -121,6 +121,10 @@
 	// 340 ms timer measured the box mid-flight, and a transform fires no observer to correct it
 	// (the picture sat 186 px low). Reopened mid-flight out, the view is the same component flying
 	// back in, and that fly's end settles it the same way.
+	// Closing pauses this component, and a paused component runs no effects or class updates until
+	// the fly is over, so the picture stayed up for all of it. The outro's start is an event, which
+	// still fires: it takes the hole away itself, and `inert:` (Svelte sets it on the view for the
+	// fly out) paints the view and the box over the picture meanwhile.
 	let settled = $state(false);
 	let view: HTMLElement;
 	$effect(() => {
@@ -172,14 +176,14 @@
 <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
 <div
 	transition:fly={{ y: '100%', duration: 320, easing: cubicOut }}
-	onoutrostart={() => (settled = false)}
+	onoutrostart={() => ((settled = false), setHole(null))}
 	onintroend={() => (settled = true)}
 	bind:this={view}
 	onpointerdown={(e) => ((pressedKeep = keeps(e.target)), (releasedKeep = false))}
 	onpointerup={(e) => (releasedKeep = keeps(e.target))}
 	onclick={onBackdropClick}
 	data-np-view
-	class="absolute inset-y-0 left-16 right-0 z-20 flex justify-center overflow-hidden px-4 py-4 {video.hole
+	class="absolute inset-y-0 left-16 right-0 z-20 flex justify-center overflow-hidden px-4 py-4 inert:bg-background {video.hole
 		? ''
 		: 'bg-background'} sm:px-6 sm:py-6 lg:px-10 {ui.sidebarCollapsed
 		? ''
@@ -301,10 +305,10 @@
 						     `w-full` still resolves against the button. -->
 						{#if prefs.nativeVideo}
 							<!-- Transparent once the picture is up (+layout paints everything around it),
-							     black until then. -->
+							     black until then, and black again while the view flies out. -->
 							{#if showVideo()}
 								<div
-									class="aspect-video w-full rounded-2xl {video.hole ? '' : 'bg-black'}"
+									class="aspect-video w-full rounded-2xl inert:bg-black {video.hole ? '' : 'bg-black'}"
 									{@attach holeFor}
 								></div>
 							{/if}
