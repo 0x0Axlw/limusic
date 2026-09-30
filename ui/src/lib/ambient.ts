@@ -135,7 +135,9 @@ void main() {
 	near *= near;
 	vec3 rgb = mix(bicubic(wash, uv), bicubic(glow, uv), near);
 	float a = mix(${WASH} * (1.0 - 0.5 * smoothstep(0.0, far, d)), 1.0, near);
-	if (hole.z > 0.0) a *= clamp(box(p, hole, radius), 0.0, 1.0);
+	// The cut's 1 px edge sits just inside the hole, over the picture. Just outside it the page
+	// paints its background under this canvas, and a half-covered pixel there read as a dark border.
+	if (hole.z > 0.0) a *= clamp(box(p, hole, radius) + 1.0, 0.0, 1.0);
 	// Interleaved gradient noise, one 8-bit step peak to peak: static, so it never shimmers.
 	float n = fract(52.9829189 * fract(dot(gl_FragCoord.xy, vec2(0.06711056, 0.00583715)))) - 0.5;
 	vec4 c = vec4(rgb * a, a) + n / 255.0;
