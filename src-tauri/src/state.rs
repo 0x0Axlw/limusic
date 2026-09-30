@@ -2364,6 +2364,8 @@ impl AppState {
         }
         #[cfg(target_os = "windows")]
         crate::taskbar::set_playing(&self.app, playing);
+        #[cfg(target_os = "linux")]
+        crate::inhibit::set_playing(playing);
         if let Some(d) = &self.discord {
             d.set_playing(playing);
         }

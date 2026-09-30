@@ -10,6 +10,8 @@ mod diagnostics;
 mod discord;
 mod hotkeys;
 mod http;
+#[cfg(target_os = "linux")]
+mod inhibit;
 mod lastfm;
 mod listentogether;
 mod local;
