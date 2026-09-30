@@ -520,6 +520,52 @@ impl AppState {
         }
     }
 
+    /// Give the player `video_id`'s music video for the audio file it was handed as `audio_url`,
+    /// when this window draws videos itself (nativevideo.rs) and the user has music videos on.
+    /// Detached: the resolve is a `/player` round trip, and the audio never waits on a picture.
+    fn attach_video(self: &Arc<Self>, video_id: &str, is_video: bool, audio_url: &str) {
+        if !is_video
+            || !native_video()
+            || crate::local::is_local_song(video_id)
+            || self.db.get_setting("music_videos").as_deref() != Some("true")
+        {
+            return;
+        }
+        let (st, id, audio) = (self.clone(), video_id.to_owned(), audio_url.to_owned());
+        tauri::async_runtime::spawn(async move {
+            let url = match st.video_url(&id) {
+                Some(u) => u,
+                None => {
+                    // ponytail: 720p, the ceiling the <video> path settled on for the player view.
+                    // mpv scales whatever it gets; raise it if theater mode ever shows the video.
+                    let disabled = st.disabled_clients();
+                    let Some(u) = st.orchestrator.resolve_video(&id, 720, &disabled).await else {
+                        return;
+                    };
+                    st.put_video_url(&id, u.clone());
+                    u
+                }
+            };
+            // Through the same chunked loopback proxy as the audio, for the same reason: mpv's
+            // open-ended range request is throttled to ~2x realtime (audioproxy.rs). Direct when
+            // the user has a proxy, as `mpv_stream_url` does.
+            let proxied = if crate::http::has_proxy() {
+                None
+            } else {
+                crate::audioproxy::register(&url, &std::collections::HashMap::new())
+            };
+            st.player.set_video_for(&audio, proxied.as_deref().unwrap_or(&url));
+            let _ = st.app.emit("video-ready", &id);
+        });
+    }
+
+    /// [`Self::attach_video`] for the track already playing, when music videos were just turned on.
+    pub async fn attach_current_video(self: &Arc<Self>) {
+        if let (Some(item), Some(path)) = (self.current_item().await, self.player.current_path()) {
+            self.attach_video(&item.video_id, item.is_video, &path);
+        }
+    }
+
     fn quality(&self) -> AudioQuality {
         match self.db.get_setting("quality").as_deref() {
             Some("LOW") => AudioQuality::Low,
@@ -2027,6 +2073,7 @@ impl AppState {
             data.artists.as_deref(),
             data.is_video,
         );
+        self.attach_video(&item.video_id, item.is_video, &stream_url);
         {
             let mut q = self.queue.lock().await;
             q.current_client = Some(data.stream_client.clone());
@@ -2170,7 +2217,8 @@ impl AppState {
         }
         // Headers are global in mpv; the direct-URL clients need none beyond UA, which the
         // current track already set. Just append the URL.
-        if let Err(e) = self.player.enqueue(&mpv_stream_url(&data)) {
+        let url = mpv_stream_url(&data);
+        if let Err(e) = self.player.enqueue(&url) {
             tracing::warn!(error = %e, "enqueue lookahead failed");
             return;
         }
@@ -2182,6 +2230,8 @@ impl AppState {
         // queue, so the repair has to land before it becomes the current track.
         if let Some(qi) = q.items.get_mut(next_idx) {
             backfill_metadata(qi, data.duration.as_deref(), data.artists.as_deref(), data.is_video);
+            // Resolved now, minutes early, so the picture is there the moment the track starts.
+            self.attach_video(&qi.video_id, qi.is_video, &url);
         }
         tracing::debug!(index = next_idx, "gapless lookahead primed");
     }
@@ -3145,6 +3195,9 @@ impl AppState {
         self.queue.lock().await.current_loudness_db = data.loudness_db;
         if let Some(item) = self.current_item().await {
             self.emit_now_playing(&item, "listen-together");
+            // `&self` here, and the attach outlives it: the managed Arc is the same state.
+            let st = tauri::Manager::state::<Arc<AppState>>(&self.app).inner().clone();
+            st.attach_video(&item.video_id, item.is_video, &stream_url);
         }
         if !playing {
             let _ = self.app.emit("playback-state", "paused");
@@ -4203,6 +4256,14 @@ fn history_threshold(duration: f64) -> f64 {
 fn loudness_gain(loudness_db: Option<f64>) -> Option<f64> {
     let gain = (TARGET_LUFS - (loudness_db? - 14.0)).clamp(-24.0, MAX_BOOST_DB);
     (gain.abs() >= 0.05).then_some(gain)
+}
+
+/// This window draws music videos with mpv (nativevideo.rs) rather than a `<video>` element.
+pub fn native_video() -> bool {
+    #[cfg(target_os = "linux")]
+    return crate::nativevideo::available();
+    #[cfg(not(target_os = "linux"))]
+    false
 }
 
 /// The URL to hand mpv for one resolved track: the loopback chunked proxy when it is up, otherwise

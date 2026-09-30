@@ -18,6 +18,8 @@ mod local;
 mod lyrics;
 mod media;
 mod mini;
+#[cfg(target_os = "linux")]
+mod nativevideo;
 mod notify;
 mod orchestrator;
 mod potoken;
@@ -680,6 +682,8 @@ pub fn run() {
             }
 
             // Pump mpv events → UI events + queue advance. context/11 events, context/14 §TrackEnded.
+            #[cfg(target_os = "linux")]
+            let video_state = app_state.clone();
             spawn_event_pump(app_state, handle, events);
 
             // Prewarm the webviews off the first-play path (context/04 §startup). The delays let
@@ -755,6 +759,9 @@ pub fn run() {
             #[cfg(target_os = "linux")]
             {
                 tune_webview_labelled(app.handle(), "main", true);
+                if let Some(w) = app.get_webview_window("main") {
+                    nativevideo::install(&w, video_state);
+                }
                 spawn_heap_trimmer();
             }
             Ok(())
@@ -785,6 +792,7 @@ pub fn run() {
             commands::get_playback,
             commands::video_stream,
             commands::forget_video_stream,
+            commands::native_video_rect,
             commands::get_settings,
             commands::set_setting,
             commands::get_global_hotkeys,

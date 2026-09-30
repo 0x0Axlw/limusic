@@ -3369,6 +3369,7 @@ dependencies = [
  "base64 0.22.1",
  "discord-rich-presence",
  "futures-util",
+ "gtk",
  "http-body-util",
  "hyper",
  "hyper-util",
