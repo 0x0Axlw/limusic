@@ -19,7 +19,21 @@
 		"pending": "Finding {count} selected tracks in the pages still loading.",
 		"local_playlist": "Local files cannot be added to a YouTube playlist.",
 		"account_changed": "Stopped adding songs because the account changed.",
-		"playlist_partial": "Added {added} to {playlist}; {duplicates} already there; {remaining} unconfirmed. {error}"
+		"playlist_partial": "Added {added} to {playlist}; {duplicates} already there; {remaining} unconfirmed. {error}",
+		"playlists_partial": "Added to {done} of {total} playlists. {error}"
+	},
+	"add_playlist": {
+		"confirm": "Add to playlists",
+		"confirm_one": "Add to playlist",
+		"selected_count": "{count} selected",
+		"dupes_title": "Duplicates found",
+		"dupes_title_one": "Duplicate found",
+		"dupes_body": "{count} duplicates found.",
+		"dupes_body_one": "1 duplicate found.",
+		"dupes_skip": "Skip duplicates",
+		"dupes_add": "Add anyway",
+		"dupes_local_note": "Playlists on this machine never hold a song twice, so duplicates there are always skipped.",
+		"back": "Back"
 	},
 	"common": {
 		"loading": "Loading...",
@@ -879,6 +893,9 @@
 		"already_in_all": "All {count} are already in {playlist}",
 		"already_in": "Already in {playlist}",
 		"added_songs": "Added {count} songs to {playlist}",
+		"added_to_playlists": "Added to {count} playlists",
+		"added_to_playlists_dupes": "Added to {count} playlists. Duplicates skipped: {dupes}",
+		"already_in_selected": "Everything is already in the selected playlists",
 		"added_one": "Added to {playlist}",
 		"app_icon_set": "App icon changed",
 		"blocked_copied": "Copied {count} blocked artists as JSON",

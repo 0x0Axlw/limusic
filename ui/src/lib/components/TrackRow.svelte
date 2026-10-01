@@ -12,7 +12,7 @@
 	import type { SongItem } from '$lib/api';
 	import { thumb } from '$lib/thumb';
 	import { lt } from '$lib/lt.svelte';
-	import { anySaved, isLiked, ratingOf, savedPlaylists, toggleRating } from '$lib/player.svelte';
+	import { anySaved, isLiked, openAddManyToPlaylist, ratingOf, savedPlaylists, toggleRating } from '$lib/player.svelte';
 	import SavedInPlaylists from './SavedInPlaylists.svelte';
 	import TrackMenu from './TrackMenu.svelte';
 	import ArtistLine from './ArtistLine.svelte';
@@ -95,6 +95,21 @@
 	// Space/click rebinding.
 	const selectable = $derived(!!selection?.active && selectionKey !== undefined);
 	const selected = $derived(selection?.has(selectionKey) ?? false);
+
+	// In select mode the row's menu acts on the whole selection when this row is in it; otherwise it
+	// keeps adding just this row. Mirrors the floating bar: not while pages are still being fetched.
+	const rowAdd = $derived(
+		onAdd
+			? () =>
+					selectable &&
+					selected &&
+					selection!.count > 1 &&
+					!selection!.selectingAll &&
+					selection!.pending === 0
+						? openAddManyToPlaylist([...selection!.songs])
+						: onAdd()
+			: undefined
+	);
 
 	function select(range = false) {
 		if (selection && selectionKey !== undefined) selection.toggle(selectionKey, range);
@@ -372,7 +387,7 @@
 		{/if}
 		<TrackMenu
 			{song}
-			{onAdd}
+			onAdd={rowAdd}
 			{onRemove}
 			{removeLabel}
 			{playlistId}
