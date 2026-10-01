@@ -1275,18 +1275,6 @@ async function addToOne(
 	return { added, dupes, failure, aborted: false };
 }
 
-export function countDuplicates(targets: BrowseItem[], songs: SongItem[]): number {
-	let count = 0;
-	for (const target of targets) {
-		for (const song of songs) {
-			if (savedIn.map[song.video_id]?.includes(target.id)) {
-				count++;
-			}
-		}
-	}
-	return count;
-}
-
 /**
  * Add songs to a playlist, from the picker or the create dialog, and say what happened. One batch
  * at a time (`ui.addPending`), even after the picker has closed.

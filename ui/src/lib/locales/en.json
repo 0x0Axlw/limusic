@@ -25,15 +25,16 @@
 	"add_playlist": {
 		"confirm": "Add to playlists",
 		"confirm_one": "Add to playlist",
-		"selected_count": "{count} selected",
 		"dupes_title": "Duplicates found",
-		"dupes_title_one": "Duplicate found",
-		"dupes_body": "{count} duplicates found.",
-		"dupes_body_one": "1 duplicate found.",
+		"dupes_there": "Already there",
+		"dupes_of": "{count} of {total} already there",
 		"dupes_skip": "Skip duplicates",
+		"skip_hint": "Add only what's missing",
+		"skip_none": "Nothing new to add",
 		"dupes_add": "Add anyway",
-		"dupes_local_note": "Playlists on this machine never hold a song twice, so duplicates there are always skipped.",
-		"back": "Back"
+		"anyway_hint": "Keep a second copy",
+		"anyway_hint_local": "Second copies go to YouTube playlists only",
+		"adds": "+{count}"
 	},
 	"common": {
 		"loading": "Loading...",
