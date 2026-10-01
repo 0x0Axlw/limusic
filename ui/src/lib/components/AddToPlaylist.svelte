@@ -8,7 +8,6 @@
 	import { thumb } from '$lib/thumb';
 	import { t } from '$lib/i18n.svelte';
 	import { ui, toast, addSongsToPlaylists, openNewPlaylist, countDuplicates } from '$lib/player.svelte';
-	import { Checkbox } from '$lib/components/ui/checkbox';
 	import { Button } from '$lib/components/ui/button';
 
 	let playlists = $state<BrowseItem[]>([]);
@@ -165,11 +164,10 @@
 								onclick={() => toggleSelect(pl.id)}
 								aria-pressed={selectedIds.includes(pl.id)}
 							>
-								<Checkbox
-									checked={selectedIds.includes(pl.id)}
-									class="pointer-events-none"
-									tabindex={-1}
-								/>
+								<span
+									aria-hidden="true"
+									class="flex h-4 w-4 shrink-0 items-center justify-center rounded-sm border {selectedIds.includes(pl.id) ? 'bg-primary text-primary-foreground border-primary' : ''}"
+								>{selectedIds.includes(pl.id) ? '✓' : ''}</span>
 								{#if pl.thumbnail}
 									<!-- thumb(): a playlist on this machine can wear a local file's art, a path. -->
 									<img src={thumb(pl.thumbnail, 96)} alt="" class="h-10 w-10 rounded-md object-cover" />

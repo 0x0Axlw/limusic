@@ -1237,6 +1237,9 @@ async function addToOne(
 	let failure: string | null = null;
 	if (local) {
 		const went = await api.addToLocalPlaylist(target.id, songs);
+		if (epoch !== auth.epoch) {
+			return { added: [], dupes: 0, failure: null, aborted: true };
+		}
 		added = songs.filter((_, i) => went[i]);
 		confirmed = songs;
 	} else {
@@ -1257,6 +1260,9 @@ async function addToOne(
 		if (epoch !== auth.epoch) {
 			return { added: [], dupes: 0, failure: null, aborted: true };
 		}
+	}
+	if (epoch !== auth.epoch) {
+		return { added: [], dupes: 0, failure: null, aborted: true };
 	}
 	const dupes = confirmed.length - added.length;
 	// Every song, not just the accepted ones: a refusal means the playlist already holds it,
@@ -1296,9 +1302,10 @@ export async function addSongsToPlaylist(target: BrowseItem, songs: SongItem[]):
 		return;
 	}
 	ui.addPending = true;
+	const epoch = auth.epoch;
 	try {
 		const res = await addToOne(target, songs, false);
-		if (res.aborted) {
+		if (epoch !== auth.epoch || res.aborted) {
 			toast.error(t('selection.account_changed'));
 			return;
 		}
@@ -1350,9 +1357,14 @@ export async function addSongsToPlaylists(
 		return;
 	}
 	ui.addPending = true;
+	const epoch = auth.epoch;
 	const results: { target: BrowseItem; added: number; dupes: number }[] = [];
 	try {
 		for (const target of targets) {
+			if (epoch !== auth.epoch) {
+				toast.error(t('selection.account_changed'));
+				return;
+			}
 			const local = api.isLocalPlaylist(target.id);
 			if (!local && songs.some((s) => api.isLocalId(s.video_id))) {
 				toast.error(t('selection.local_playlist'));
@@ -1374,7 +1386,7 @@ export async function addSongsToPlaylists(
 				}
 			}
 			const res = await addToOne(target, targetSongs, mode === 'anyway');
-			if (res.aborted) {
+			if (epoch !== auth.epoch || res.aborted) {
 				toast.error(t('selection.account_changed'));
 				return;
 			}
