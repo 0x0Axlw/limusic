@@ -12,7 +12,7 @@
 	import type { SongItem } from '$lib/api';
 	import { thumb } from '$lib/thumb';
 	import { lt } from '$lib/lt.svelte';
-	import { anySaved, isLiked, openAddManyToPlaylist, ratingOf, savedPlaylists, toggleRating } from '$lib/player.svelte';
+	import { anySaved, isLiked, openAddManyToPlaylist, ratingOf, savedPlaylists, toast, toggleRating } from '$lib/player.svelte';
 	import SavedInPlaylists from './SavedInPlaylists.svelte';
 	import TrackMenu from './TrackMenu.svelte';
 	import ArtistLine from './ArtistLine.svelte';
@@ -97,17 +97,20 @@
 	const selected = $derived(selection?.has(selectionKey) ?? false);
 
 	// In select mode the row's menu acts on the whole selection when this row is in it; otherwise it
-	// keeps adding just this row. Mirrors the floating bar: not while pages are still being fetched.
+	// keeps adding just this row. While pages are still being fetched the floating bar disables its
+	// button, so this says why instead of quietly adding the one row.
 	const rowAdd = $derived(
 		onAdd
-			? () =>
-					selectable &&
-					selected &&
-					selection!.count > 1 &&
-					!selection!.selectingAll &&
-					selection!.pending === 0
-						? openAddManyToPlaylist([...selection!.songs])
-						: onAdd()
+			? () => {
+					if (!(selectable && selected && selection!.count > 1)) onAdd();
+					else if (selection!.pending || selection!.selectingAll)
+						toast(
+							selection!.pending
+								? t('selection.pending', { count: selection!.pending })
+								: t('common.loading')
+						);
+					else openAddManyToPlaylist([...selection!.songs]);
+				}
 			: undefined
 	);
 

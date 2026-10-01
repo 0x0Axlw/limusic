@@ -1332,7 +1332,9 @@ export async function addSongsToPlaylist(target: BrowseItem, songs: SongItem[]):
 }
 
 /**
- * Add songs to multiple playlists sequentially, with duplicate filtering in 'skip' mode.
+ * Add songs to multiple playlists sequentially. 'skip' leaves duplicates to the playlist itself:
+ * YouTube refuses them and a playlist on this machine never takes one. The savedIn index is not
+ * asked, because it can still list a track that was removed on youtube.com.
  */
 export async function addSongsToPlaylists(
 	targets: BrowseItem[],
@@ -1358,22 +1360,7 @@ export async function addSongsToPlaylists(
 				toast.error(t('selection.local_playlist'));
 				return;
 			}
-			let targetSongs = songs;
-			let skippedDupes = 0;
-			if (mode === 'skip') {
-				targetSongs = songs.filter((s) => {
-					if (savedIn.map[s.video_id]?.includes(target.id)) {
-						skippedDupes++;
-						return false;
-					}
-					return true;
-				});
-				if (!targetSongs.length) {
-					results.push({ target, added: 0, dupes: skippedDupes });
-					continue;
-				}
-			}
-			const res = await addToOne(target, targetSongs, mode === 'anyway');
+			const res = await addToOne(target, songs, mode === 'anyway');
 			if (epoch !== auth.epoch || res.aborted) {
 				toast.error(t('selection.account_changed'));
 				return;
@@ -1383,7 +1370,7 @@ export async function addSongsToPlaylists(
 				toast.error(t('selection.playlists_partial', { done, total: targets.length, error: res.failure }));
 				return;
 			}
-			results.push({ target, added: res.added.length, dupes: skippedDupes + res.dupes });
+			results.push({ target, added: res.added.length, dupes: res.dupes });
 		}
 		const touched = results.filter((r) => r.added > 0);
 		const dupesTotal = results.reduce((n, r) => n + r.dupes, 0);

@@ -8,7 +8,8 @@
 		Cancel01Icon,
 		ComputerIcon,
 		Copy01Icon,
-		SquareArrowRightDoubleIcon
+		SquareArrowRightDoubleIcon,
+		Tick02Icon
 	} from '@hugeicons/core-free-icons';
 	import * as api from '$lib/api';
 	import type { BrowseItem } from '$lib/api';
@@ -211,7 +212,11 @@
 								<span
 									aria-hidden="true"
 									class="flex h-4 w-4 shrink-0 items-center justify-center rounded-sm border {selectedIds.includes(pl.id) ? 'bg-primary text-primary-foreground border-primary' : ''}"
-								>{selectedIds.includes(pl.id) ? '✓' : ''}</span>
+								>
+									{#if selectedIds.includes(pl.id)}
+										<HugeiconsIcon icon={Tick02Icon} strokeWidth={2.5} class="h-3 w-3" />
+									{/if}
+								</span>
 								{#if pl.thumbnail}
 									<!-- thumb(): a playlist on this machine can wear a local file's art, a path. -->
 									<img src={thumb(pl.thumbnail, 96)} alt="" class="h-10 w-10 rounded-md object-cover" />
