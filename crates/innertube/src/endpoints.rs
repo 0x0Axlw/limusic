@@ -1125,7 +1125,7 @@ fn strip_vl(id: &str) -> &str {
 }
 
 fn add_video_action(video_id: &str, allow_duplicates: bool) -> serde_json::Value {
-    if allow_duplicates {
+    if !allow_duplicates {
         serde_json::json!({
             "action": "ACTION_ADD_VIDEO",
             "addedVideoId": video_id,
@@ -1161,11 +1161,11 @@ mod tests {
     #[test]
     fn add_video_action_json() {
         assert_eq!(
-            add_video_action("dQw4w9WgXcQ", false),
+            add_video_action("dQw4w9WgXcQ", true),
             json!({ "action": "ACTION_ADD_VIDEO", "addedVideoId": "dQw4w9WgXcQ" })
         );
         assert_eq!(
-            add_video_action("dQw4w9WgXcQ", true),
+            add_video_action("dQw4w9WgXcQ", false),
             json!({
                 "action": "ACTION_ADD_VIDEO",
                 "addedVideoId": "dQw4w9WgXcQ",
