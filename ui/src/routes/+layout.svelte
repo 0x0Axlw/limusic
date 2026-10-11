@@ -51,6 +51,7 @@
 	import KeyboardShortcuts from '$lib/components/KeyboardShortcuts.svelte';
 	import { Button } from '$lib/components/ui/button';
 	import { auth, initApp, np, playback, prefs, ui } from '$lib/player.svelte';
+	import { isLocalId } from '$lib/api';
 	import { video } from '$lib/video.svelte';
 	import { win, initWin } from '$lib/win.svelte';
 	import { initZoom } from '$lib/zoom.svelte';
@@ -160,6 +161,18 @@
 	const showQueue = $derived(queueOpen && !tabbed);
 	const showLyrics = $derived(lyricsOpen && !tabbed);
 	const showComments = $derived(commentsOpen && !tabbed);
+	// A local file has no YouTube comments, and the bar and the view hide their comments buttons for
+	// it, so nothing could close them: comments count as closed. Docked, the panel goes; tabbed, the
+	// view goes back to the tab that was open before comments. Opened again on a YouTube track as usual.
+	let tabBeforeComments = $state<'queue' | 'lyrics'>('queue');
+	$effect(() => {
+		if (np.tab !== 'comments') tabBeforeComments = np.tab;
+	});
+	$effect(() => {
+		if (!playback.now || !isLocalId(playback.now.videoId)) return;
+		commentsOpen = false;
+		if (np.tab === 'comments') np.tab = tabBeforeComments;
+	});
 
 	// "Adapt colors to artwork": re-run on every track change and on the toggle itself. The 120px
 	// cover is the one the player bar has already loaded, so this costs no extra request.
