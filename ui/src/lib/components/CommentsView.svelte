@@ -9,10 +9,13 @@
 	import {
 		cancelDelete,
 		comments,
+		composing,
 		confirmDelete,
+		followTrack,
 		loadComments,
 		loadMoreComments,
 		loadMoreReplies,
+		sending,
 		setCommentSort,
 		submitCreate,
 		toggleReplies,
@@ -27,13 +30,19 @@
 	// tab), so nothing is fetched for a track nobody opened comments on. Reopened on the same
 	// track, `loadComments` is a no-op.
 	const videoId = $derived(playback.now?.videoId);
+	const title = $derived(playback.now?.title ?? '');
+	// A draft or a send keeps the panel on its track (`followTrack`); emptied or sent, the change
+	// re-runs this and the panel follows the playing track again.
+	const holding = $derived(composing());
 	// Also re-runs on a sign-in, sign-out or account switch (`auth.epoch`): this panel sits outside
 	// the page the layout remounts on it, so it has to notice by itself that what it holds belongs
 	// to whoever was signed in before. `loadComments` starts over when the epoch differs.
 	$effect(() => {
 		const id = videoId;
+		const name = title;
+		void holding;
 		void auth.epoch;
-		if (id) untrack(() => loadComments(id));
+		if (id) untrack(() => followTrack(id, name));
 	});
 
 	let scroller = $state<HTMLElement | null>(null);
@@ -120,6 +129,22 @@
 {/snippet}
 
 <div class="flex min-h-0 flex-1 flex-col">
+	{#if comments.held && videoId}
+		<!-- Held on the track a draft was written for, while another one plays. -->
+		<div class="flex items-center justify-between gap-2 border-b px-4 py-2">
+			<span class="min-w-0 truncate text-xs text-muted-foreground">
+				{t('comments.held', { title: comments.title })}
+			</span>
+			<Button
+				variant="ghost"
+				size="sm"
+				disabled={sending()}
+				onclick={() => followTrack(videoId, title, true)}
+			>
+				{t('comments.follow_current')}
+			</Button>
+		</div>
+	{/if}
 	{#if comments.header?.sorts.length}
 		<div class="flex items-center justify-between gap-2 border-b px-4 py-2">
 			<span class="min-w-0 truncate text-xs text-muted-foreground">

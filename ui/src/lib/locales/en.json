@@ -991,7 +991,9 @@
 		"save": "Save",
 		"sending": "Sending...",
 		"delete_title": "Delete this comment?",
-		"delete_desc": "This can't be undone. Any replies to it go with it."
+		"delete_desc": "This can't be undone. Any replies to it go with it.",
+		"held": "Comments on {title}",
+		"follow_current": "Show current track"
 	},
 	"sort": {
 		"label": "Sort",

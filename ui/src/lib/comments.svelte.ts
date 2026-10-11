@@ -1,5 +1,6 @@
-// State behind the comments panel, for the playing track (`videoId`). A response is applied only
-// if `gen` and the token it was asked with are still current, as in the home page's `loadMore`.
+// State behind the comments panel, for the playing track (`videoId`), or for the track it is held on
+// while a composer has something in it (`held`, see `followTrack`). A response is applied only if
+// `gen` and the token it was asked with are still current, as in the home page's `loadMore`.
 // Errors arrive as a kind word (`api.commentsErrorKind`) and are worded here.
 import * as api from './api';
 import type {
@@ -36,7 +37,12 @@ function emptyBox(): Box & { target: null } {
 }
 
 export const comments = $state({
+	/** The track the comments on screen belong to. */
 	videoId: null as string | null,
+	/** That track's title, for the line shown while the panel is held on it. */
+	title: '',
+	/** The track the panel is held on while the playing track is another one (`followTrack`). */
+	held: null as string | null,
 	/** `error` is a failed request (retry), `reload` a session that changed under the comments
 	 *  (reload); `disabled` and `empty` are answers, not errors. */
 	status: 'idle' as 'idle' | 'loading' | 'ready' | 'error' | 'reload',
@@ -115,6 +121,35 @@ function apply(page: api.CommentsPage) {
 	comments.status = 'ready';
 }
 
+/** A composer has text in it, or is sending: the panel stays on the track it was written for. */
+export const composing = () =>
+	!!comments.create.text.trim() ||
+	comments.create.pending ||
+	!!comments.draft.text.trim() ||
+	comments.draft.pending;
+
+/** A post, reply or edit is waiting for its answer. */
+export const sending = () => comments.create.pending || comments.draft.pending;
+
+/**
+ * Follow the playing track `id`. While a composer holds the panel (`composing`), the panel stays on
+ * the comments it shows and only notes that it is held; once the box is emptied or the send is
+ * over, the next call loads the playing track. An auth change starts over as always: the drafts
+ * belong to a session that is gone. `force` is the "switch" button: drop the drafts and follow.
+ */
+export function followTrack(id: string, title: string, force = false) {
+	if (force && sending()) return;
+	const current = comments.epoch === auth.epoch;
+	if (!force && current && comments.videoId && comments.videoId !== id && composing()) {
+		comments.held = comments.videoId;
+		return;
+	}
+	comments.held = null;
+	comments.title = title;
+	// Released on the same track (it came back), the comments are still those of `id`.
+	loadComments(id);
+}
+
 /**
  * Load a track's comments. A no-op when they are already loaded for it under the same sign-in, so
  * closing and reopening the panel on the same track costs nothing; `force` is the retry and
@@ -125,6 +160,7 @@ export async function loadComments(videoId: string, force = false) {
 	if (!force && comments.videoId === videoId && settled && comments.epoch === auth.epoch) return;
 	const g = ++gen;
 	comments.videoId = videoId;
+	comments.held = null;
 	comments.epoch = auth.epoch;
 	comments.header = undefined;
 	clearList();
@@ -346,11 +382,13 @@ function writeFailed(e: unknown) {
 export async function submitCreate() {
 	const box = comments.create;
 	const text = box.text.trim();
-	if (!text || box.pending || !comments.header?.composer) return;
+	// The track these comments (and so the composer) were read for, held or not.
+	const videoId = comments.videoId;
+	if (!text || box.pending || !comments.header?.composer || !videoId) return;
 	const s = session;
 	box.pending = true;
 	try {
-		const posted = await api.commentCreate(text);
+		const posted = await api.commentCreate(videoId, text);
 		if (s !== session) return;
 		box.text = '';
 		if (!posted) {

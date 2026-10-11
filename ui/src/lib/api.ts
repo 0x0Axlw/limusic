@@ -636,10 +636,11 @@ export const getCommentReplies = (token: string) =>
 /** Like, unlike, dislike or undislike one comment; only an action in its `actions`. */
 export const commentAction = (commentId: string, action: CommentAction) =>
 	invoke<CommentActionOutcome>('comment_action', { commentId, action });
-/** Post a top-level comment (needs the header's `composer`). Resolves with the posted comment
- *  when YouTube's answer carried it, otherwise `null`. */
-export const commentCreate = (text: string) =>
-	invoke<CommentThread | null>('comment_create', { text });
+/** Post a top-level comment on `videoId`, the track whose comments are shown (needs the header's
+ *  `composer`; refused if it was read for another track). Resolves with the posted comment when
+ *  YouTube's answer carried it, otherwise `null`. */
+export const commentCreate = (videoId: string, text: string) =>
+	invoke<CommentThread | null>('comment_create', { videoId, text });
 /** Reply to a comment that offers `reply`. Resolves with the reply as for `commentCreate`. */
 export const commentReply = (commentId: string, text: string) =>
 	invoke<Comment | null>('comment_reply', { commentId, text });

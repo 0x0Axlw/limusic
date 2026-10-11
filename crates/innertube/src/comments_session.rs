@@ -81,9 +81,14 @@ pub struct CommentsSession {
     tokens: HashMap<String, Provenance>,
     comments: HashMap<(String, String), Entry>,
     busy: HashSet<(String, String)>,
-    /// The command that posts a top-level comment on the track on screen, and who it was issued
-    /// to. Replaced by every page read as an account that carries one.
-    composer: Option<(String, WriteCommand)>,
+    /// The track the comments are read for, set by [`Self::start`].
+    video_id: Option<String>,
+    /// The command that posts a top-level comment, who it was issued to and the track it posts
+    /// on. Replaced by every page read as an account that carries one.
+    composer: Option<(String, String, WriteCommand)>,
+    /// Bumped by every [`Self::clear`]: a read that began under another epoch belongs to comments
+    /// that are gone and must not be remembered.
+    epoch: u64,
 }
 
 impl CommentsSession {
@@ -93,16 +98,30 @@ impl CommentsSession {
         self.tokens.clear();
         self.comments.clear();
         self.busy.clear();
+        self.video_id = None;
         self.composer = None;
+        self.epoch += 1;
+    }
+
+    /// Forget everything and start on the comments of `video_id`.
+    pub fn start(&mut self, video_id: &str) {
+        self.clear();
+        self.video_id = Some(video_id.to_owned());
+    }
+
+    /// Which [`Self::clear`] the session is at. A read captures it before its request and
+    /// remembers its answer only if it is unchanged afterwards.
+    pub fn epoch(&self) -> u64 {
+        self.epoch
     }
 
     /// Remember a page just handed to the UI: where each of its tokens came from and, for a page
     /// read as an account, each comment's vote and action tokens.
     pub fn remember_page(&mut self, provenance: &Provenance, page: &CommentsPage) {
-        if let (Provenance::Account(identity), Some(create)) =
-            (provenance, page.header.as_ref().and_then(|h| h.create.as_ref()))
+        if let (Provenance::Account(identity), Some(video_id), Some(create)) =
+            (provenance, &self.video_id, page.header.as_ref().and_then(|h| h.create.as_ref()))
         {
-            self.composer = Some((identity.clone(), create.clone()));
+            self.composer = Some((identity.clone(), video_id.clone(), create.clone()));
         }
         let sort_tokens = page.header.iter().flat_map(|h| h.sorts.iter()).map(|s| s.token.as_str());
         let thread_tokens = page.threads.iter().filter_map(|t| t.replies_token.as_deref());
@@ -234,12 +253,19 @@ impl CommentsSession {
         self.comments.remove(&key);
     }
 
-    /// Approve posting a top-level comment for `identity`: only with the command the page read as
-    /// that identity carried. One post at a time.
-    pub fn begin_create(&mut self, identity: &str) -> Result<WriteTicket, ActionError> {
+    /// Approve posting a top-level comment on `video_id` for `identity`: only with the command the
+    /// page read as that identity carried, and only on the track it was read for. One post at a
+    /// time.
+    pub fn begin_create(
+        &mut self,
+        identity: &str,
+        video_id: &str,
+    ) -> Result<WriteTicket, ActionError> {
         let command = match &self.composer {
-            Some((who, command)) if who == identity => command.clone(),
-            _ => return Err(ActionError::Unknown),
+            Some((who, _, _)) if who != identity => return Err(ActionError::Unknown),
+            Some((_, video, command)) if video == video_id => command.clone(),
+            Some(_) => return Err(ActionError::Unavailable),
+            None => return Err(ActionError::Unknown),
         };
         if !self.busy.insert((identity.to_owned(), COMPOSER.to_owned())) {
             return Err(ActionError::Busy);
@@ -448,6 +474,7 @@ mod tests {
     fn write_commands_are_only_usable_by_the_identity_they_were_issued_to() {
         let mut s = CommentsSession::default();
         let page = writes_page();
+        s.start("v");
         s.remember_page(&account("a:1"), &page);
         let own = comment_id(&page, "own_full");
         for other in ["b:1", "a:2", ""] {
@@ -455,20 +482,21 @@ mod tests {
                 s.begin_write(other, &own, CommentWrite::Edit),
                 Err(ActionError::Unknown)
             ));
-            assert!(matches!(s.begin_create(other), Err(ActionError::Unknown)), "{other}");
+            assert!(matches!(s.begin_create(other, "v"), Err(ActionError::Unknown)), "{other}");
         }
         let t = s.begin_write("a:1", &own, CommentWrite::Edit).ok().unwrap();
         assert_eq!(command_path(&t), "comment/update_comment");
         s.finish_write("a:1", &own, false);
-        assert!(s.begin_create("a:1").is_ok());
+        assert!(s.begin_create("a:1", "v").is_ok());
 
         let mut anon = CommentsSession::default();
+        anon.start("v");
         anon.remember_page(&Provenance::Anonymous, &page);
         assert!(matches!(
             anon.begin_write("a:1", &own, CommentWrite::Edit),
             Err(ActionError::Unknown)
         ));
-        assert!(matches!(anon.begin_create("a:1"), Err(ActionError::Unknown)));
+        assert!(matches!(anon.begin_create("a:1", "v"), Err(ActionError::Unknown)));
     }
 
     #[test]
@@ -575,14 +603,52 @@ mod tests {
     #[test]
     fn posting_is_one_at_a_time_and_clearing_forgets_the_composer() {
         let mut s = CommentsSession::default();
+        s.start("v");
         s.remember_page(&account("a"), &writes_page());
-        let t = s.begin_create("a").ok().unwrap();
+        let t = s.begin_create("a", "v").ok().unwrap();
         assert_eq!(command_path(&t), crate::models::comment_write::COMMENT_CREATE_PATH);
-        assert!(matches!(s.begin_create("a"), Err(ActionError::Busy)));
+        assert!(matches!(s.begin_create("a", "v"), Err(ActionError::Busy)));
         s.finish_create("a");
-        assert!(s.begin_create("a").is_ok());
+        assert!(s.begin_create("a", "v").is_ok());
         s.clear();
         s.finish_create("a");
-        assert!(matches!(s.begin_create("a"), Err(ActionError::Unknown)));
+        assert!(matches!(s.begin_create("a", "v"), Err(ActionError::Unknown)));
+    }
+
+    /// The composer posts only on the track it was read for: a post meant for another track is
+    /// refused before anything is sent.
+    #[test]
+    fn the_composer_posts_only_on_the_track_it_was_read_for() {
+        let mut s = CommentsSession::default();
+        s.start("v1");
+        s.remember_page(&account("a"), &writes_page());
+        assert!(matches!(s.begin_create("a", "v2"), Err(ActionError::Unavailable)));
+        assert!(s.begin_create("a", "v1").is_ok(), "the refusal did not mark it busy");
+    }
+
+    /// A read that began before a clear (another track, an auth change) answers after it: its page
+    /// must not be remembered, or the previous track's composer and tokens would come back. The
+    /// commands compare the epoch they captured, as here.
+    #[test]
+    fn a_page_read_before_a_clear_is_not_remembered() {
+        let mut s = CommentsSession::default();
+        s.start("v1");
+        let read_v1 = s.epoch();
+        s.start("v2");
+        let mut v2 = writes_page();
+        v2.continuation = Some("tok-v2".into());
+        s.remember_page(&account("a"), &v2);
+
+        // v1's page arrives late.
+        let mut v1 = writes_page();
+        v1.continuation = Some("tok-v1".into());
+        assert_ne!(s.epoch(), read_v1, "the late page is recognised");
+        if s.epoch() == read_v1 {
+            s.remember_page(&account("a"), &v1);
+        }
+        assert_eq!(s.provenance("tok-v1"), None);
+        assert_eq!(s.provenance("tok-v2"), Some(account("a")));
+        assert!(matches!(s.begin_create("a", "v1"), Err(ActionError::Unavailable)));
+        assert!(s.begin_create("a", "v2").is_ok());
     }
 }

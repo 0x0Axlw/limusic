@@ -86,16 +86,6 @@ impl Error {
     }
 }
 
-/// Logs `error.status` (if enum-like) and `error.message` (cut at 200 characters) of a 400 to a
-/// comment request: they name the field YouTube did not take.
-async fn log_comment_refusal(path: &str, resp: reqwest::Response) {
-    let value: serde_json::Value = resp.json().await.unwrap_or_default();
-    let field = |k: &str| value.pointer(&format!("/error/{k}")).and_then(serde_json::Value::as_str);
-    let status = field("status").map_or("-", |s| enum_like(s).unwrap_or("unexpected"));
-    let message: String = field("message").unwrap_or("-").chars().take(200).collect();
-    tracing::debug!(path, error_status = status, error_message = %message, "comment request answered 400");
-}
-
 /// `s` if it looks like an enum value (`STATUS_SUCCEEDED`), safe to log.
 pub(crate) fn enum_like(s: &str) -> Option<&str> {
     (s.len() <= 64 && s.bytes().all(|b| b.is_ascii_uppercase() || b.is_ascii_digit() || b == b'_'))
@@ -488,21 +478,14 @@ impl InnerTube {
             // Rebuild headers on every iteration so retried requests use the updated session cookie.
             let headers = self.headers(client, set_login);
 
-            let res = match self.http.post(&url).headers(headers).body(body.clone()).send().await {
-                // A comment request YouTube found malformed: its answer names what it did not
-                // take, so that is logged before the answer is dropped.
-                Ok(resp)
-                    if resp.status() == reqwest::StatusCode::BAD_REQUEST
-                        && path.starts_with("comment/") =>
-                {
-                    let Some(e) = resp.error_for_status_ref().err() else {
-                        unreachable!("400 is an error status")
-                    };
-                    log_comment_refusal(path, resp).await;
-                    Err(e)
-                }
-                other => other.and_then(|r| r.error_for_status()),
-            };
+            let res = self
+                .http
+                .post(&url)
+                .headers(headers)
+                .body(body.clone())
+                .send()
+                .await
+                .and_then(|r| r.error_for_status());
 
             match res {
                 Ok(resp) => {

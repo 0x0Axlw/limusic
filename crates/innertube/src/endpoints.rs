@@ -311,11 +311,7 @@ impl InnerTube {
             return Ok(CommentsPage::disabled());
         };
         let value = self.next_continuation(client, &token, as_account).await?;
-        let page = comments::parse_comments_page(&value, true);
-        if as_account {
-            log_own_comment_commands("first page", page_comments(&page));
-        }
-        Ok(page)
+        Ok(comments::parse_comments_page(&value, true))
     }
 
     /// The next page of comments, or another sort (the header's sort entries carry tokens).
@@ -331,9 +327,6 @@ impl InnerTube {
         // A sort switch answers with a header and a body, a page with the body alone.
         let mut page = comments::parse_comments_page(&value, false);
         page.read_as_account = as_account;
-        if as_account {
-            log_own_comment_commands("continuation", page_comments(&page));
-        }
         Ok(page)
     }
 
@@ -346,11 +339,7 @@ impl InnerTube {
         as_account: bool,
     ) -> Result<CommentReplies, Error> {
         let value = self.next_continuation(client, token, as_account).await?;
-        let replies = comments::parse_comment_replies(&value);
-        if as_account {
-            log_own_comment_commands("replies", replies.replies.iter());
-        }
-        Ok(replies)
+        Ok(comments::parse_comment_replies(&value))
     }
 
     /// `next` with a bare continuation token. Not `browse_continuation`, see above.
@@ -1399,28 +1388,6 @@ fn accept_answer(
     }
 }
 
-/// Every comment on a page, top-level and inline replies.
-fn page_comments(page: &CommentsPage) -> impl Iterator<Item = &comments::Comment> {
-    page.threads.iter().flat_map(|t| std::iter::once(&t.comment).chain(&t.replies))
-}
-
-/// One line per signed-in page that has the viewer's own comments: how many, and how many of them
-/// offer edit and delete. Counts only.
-fn log_own_comment_commands<'a>(
-    kind: &'static str,
-    comments: impl Iterator<Item = &'a comments::Comment>,
-) {
-    let (mut own, mut with_edit, mut with_delete) = (0, 0, 0);
-    for c in comments.filter(|c| c.own) {
-        own += 1;
-        with_edit += usize::from(c.commands.edit.is_some());
-        with_delete += usize::from(c.commands.delete.is_some());
-    }
-    if own > 0 {
-        tracing::debug!(kind, own, with_edit, with_delete, "own comment commands");
-    }
-}
-
 /// A 401/403: YouTube said no to this request.
 fn is_refusal(e: &Error) -> bool {
     matches!(e, Error::Http(h) if h.status().is_some_and(|s| s == 401 || s == 403))
@@ -1787,6 +1754,31 @@ mod tests {
         assert!(body["context"].is_object(), "the context is ours: {body}");
         assert!(as_account(&sent[0]));
         assert!(sent[0].header("authorization").is_some_and(|a| a.starts_with("SAPISIDHASH ")));
+    }
+
+    /// A post for another track than the one the composer was read for is refused by the session,
+    /// so the command (which sends only with a ticket) puts nothing on the wire.
+    #[tokio::test]
+    async fn a_post_for_another_track_sends_nothing() {
+        let server =
+            MockServer::start(|_| (200, r#"{"actions":[{"createCommentAction":{}}]}"#.into()));
+        let it = it_against(&server, true);
+        let identity = it.comments_identity().unwrap();
+        let mut session = crate::CommentsSession::default();
+        session.start("read-for");
+        let page = crate::models::comments::parse_comments_page(
+            &crate::models::comments::tests::write_page(),
+            true,
+        );
+        session.remember_page(&crate::Provenance::Account(identity.clone()), &page);
+        match session.begin_create(&identity, "another-track") {
+            Err(e) => assert_eq!(e, crate::ActionError::Unavailable),
+            Ok(ticket) => {
+                let _ = it.comment_write(&web(), ticket.command(), Some("hello"), false).await;
+                panic!("a post for another track was approved");
+            }
+        }
+        assert!(server.requests().is_empty(), "nothing reached the server");
     }
 
     /// The answers: a clean 200 is accepted; an `error`, a failed result, or a non-200 is not; and

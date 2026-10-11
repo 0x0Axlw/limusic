@@ -776,7 +776,7 @@ pub async fn get_home_more(state: St<'_>, token: String) -> Result<HomePage, Str
     state.it.home_continuation(client, &token).await.map_err(|e| e.to_string())
 }
 
-//// Why a comments command failed, as a stable word the UI words itself. Details go to the debug log.
+/// Why a comments command failed, as a stable word the UI words itself. Details go to the debug log.
 #[derive(Debug, Clone, Copy, serde::Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum CommentsError {
@@ -843,7 +843,11 @@ impl From<ActionError> for CommentsError {
 #[tauri::command]
 pub async fn get_comments(state: St<'_>, video_id: String) -> Result<CommentsPage, CommentsError> {
     let client = metadata_client(&state)?;
-    state.comments.lock().unwrap().clear();
+    let epoch = {
+        let mut session = state.comments.lock().unwrap();
+        session.start(&video_id);
+        session.epoch()
+    };
     let before = state.it.comments_identity();
     let page = state.it.comments(client, &video_id).await.map_err(|e| CommentsError::of(&e))?;
     let provenance = if page.read_as_account {
@@ -855,8 +859,24 @@ pub async fn get_comments(state: St<'_>, video_id: String) -> Result<CommentsPag
     } else {
         Provenance::Anonymous
     };
-    state.comments.lock().unwrap().remember_page(&provenance, &page);
+    remember_read(&state, epoch, |s| s.remember_page(&provenance, &page))?;
     Ok(page)
+}
+
+/// Remember what a read returned, unless the session was cleared while it was in flight (another
+/// track or an auth change): then the answer belongs to comments that are gone, and the UI reloads.
+fn remember_read(
+    state: &AppState,
+    epoch: u64,
+    remember: impl FnOnce(&mut innertube::CommentsSession),
+) -> Result<(), CommentsError> {
+    let mut session = state.comments.lock().unwrap();
+    if session.epoch() != epoch {
+        tracing::debug!("comments read: the session was cleared during it");
+        return Err(CommentsError::AccountChanged);
+    }
+    remember(&mut session);
+    Ok(())
 }
 
 /// How a token goes back: the way it was issued, and an account's only while that account is active.
@@ -886,13 +906,14 @@ pub async fn get_comments_more(
     token: String,
 ) -> Result<CommentsPage, CommentsError> {
     let client = metadata_client(&state)?;
+    let epoch = state.comments.lock().unwrap().epoch();
     let (provenance, as_account) = comments_token_origin(&state, &token)?;
     let page = state
         .it
         .comments_continuation(client, &token, as_account)
         .await
         .map_err(|e| CommentsError::of(&e))?;
-    state.comments.lock().unwrap().remember_page(&provenance, &page);
+    remember_read(&state, epoch, |s| s.remember_page(&provenance, &page))?;
     Ok(page)
 }
 
@@ -903,13 +924,14 @@ pub async fn get_comment_replies(
     token: String,
 ) -> Result<CommentReplies, CommentsError> {
     let client = metadata_client(&state)?;
+    let epoch = state.comments.lock().unwrap().epoch();
     let (provenance, as_account) = comments_token_origin(&state, &token)?;
     let replies = state
         .it
         .comment_replies(client, &token, as_account)
         .await
         .map_err(|e| CommentsError::of(&e))?;
-    state.comments.lock().unwrap().remember_replies(&provenance, &replies);
+    remember_read(&state, epoch, |s| s.remember_replies(&provenance, &replies))?;
     Ok(replies)
 }
 
@@ -1001,16 +1023,19 @@ fn remember_written(
     thread
 }
 
-/// Post a top-level comment on the track on screen. Returns it when the answer carried it.
+/// Post a top-level comment on `video_id`, the track whose comments the UI shows. Refused, with
+/// nothing sent, if the composer was read for another track. Returns the comment when the answer
+/// carried it.
 #[tauri::command]
 pub async fn comment_create(
     state: St<'_>,
+    video_id: String,
     text: String,
 ) -> Result<Option<CommentThread>, CommentsError> {
     let text = comment_text(&text)?;
     let client = require_login(&state).map_err(|_| CommentsError::AccountChanged)?;
     let identity = state.it.comments_identity().ok_or(CommentsError::AccountChanged)?;
-    let ticket = state.comments.lock().unwrap().begin_create(&identity)?;
+    let ticket = state.comments.lock().unwrap().begin_create(&identity, &video_id)?;
     let sent = state.it.comment_write(client, ticket.command(), Some(text), false).await;
     state.comments.lock().unwrap().finish_create(&identity);
     let answer = sent.map_err(|e| CommentsError::of(&e))?;
