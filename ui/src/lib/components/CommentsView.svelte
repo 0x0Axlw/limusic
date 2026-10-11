@@ -4,7 +4,6 @@
 	import { ArrowDown01Icon, ArrowUp01Icon } from '@hugeicons/core-free-icons';
 	import { Button } from '$lib/components/ui/button';
 	import { Skeleton } from '$lib/components/ui/skeleton';
-	import * as Tabs from '$lib/components/ui/tabs';
 	import * as AlertDialog from '$lib/components/ui/alert-dialog';
 	import {
 		cancelDelete,
@@ -60,6 +59,7 @@
 		return () => io.disconnect();
 	}
 
+	const SORTS = ['top', 'newest'] as const;
 	const selectedSort = $derived(comments.header?.sorts.find((s) => s.selected)?.key ?? 'top');
 	const count = $derived(comments.header?.count_text);
 
@@ -152,12 +152,20 @@
 					{count === '1' ? t('comments.count_one') : t('comments.count', { count })}
 				{/if}
 			</span>
-			<Tabs.Root value={selectedSort} onValueChange={(v) => setCommentSort(v as 'top' | 'newest')}>
-				<Tabs.List>
-					<Tabs.Trigger value="top">{t('comments.sort_top')}</Tabs.Trigger>
-					<Tabs.Trigger value="newest">{t('comments.sort_newest')}</Tabs.Trigger>
-				</Tabs.List>
-			</Tabs.Root>
+			<!-- Two plain words, the active one in the foreground and underlined: no pill, since the
+			     player view's tabs sit right above. -->
+			<div class="flex shrink-0 items-center gap-3 text-xs" role="group" aria-label={t('sort.label')}>
+				{#each SORTS as key (key)}
+					<button
+						type="button"
+						aria-pressed={selectedSort === key}
+						class="cursor-pointer py-1 text-muted-foreground hover:text-foreground aria-pressed:font-medium aria-pressed:text-foreground aria-pressed:underline aria-pressed:decoration-2 aria-pressed:underline-offset-4"
+						onclick={() => setCommentSort(key)}
+					>
+						{t(`comments.sort_${key}`)}
+					</button>
+				{/each}
+			</div>
 		</div>
 	{/if}
 
@@ -171,6 +179,8 @@
 					label={t('comments.composer_label')}
 					submitLabel={t('comments.post')}
 					pending={comments.create.pending}
+					avatar="size-8"
+					collapsible
 					onsubmit={submitCreate}
 				/>
 			</div>

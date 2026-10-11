@@ -82,6 +82,7 @@
 		submitLabel={editing ? t('comments.save') : t('comments.post_reply')}
 		pending={draft.pending}
 		focus
+		avatar={editing ? undefined : 'size-6'}
 		onsubmit={submitDraft}
 		oncancel={cancelDraft}
 	/>
