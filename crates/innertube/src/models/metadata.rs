@@ -42,13 +42,14 @@ pub struct SongItem {
     /// edit_playlist). Only present when the item came from a playlist page.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub set_video_id: Option<String>,
-    /// Who put this track in the playlist, on a collaborative one: the contributor's name and
-    /// avatar off the row's `contributorsAvatars`. `None` everywhere else, since an ordinary
+    /// Who put this track in the playlist, on a collaborative one: their names and one avatar per
+    /// person off the row's `contributorsAvatars`. Usually one, several on a Taste Match row that
+    /// more than one member's taste picked (#102). Empty everywhere else, since an ordinary
     /// playlist has one contributor and YouTube doesn't send the stack.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub added_by: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub added_by_avatar: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub added_by_avatars: Vec<String>,
     /// The signed-in user's rating of this track, from the row's `likeStatus`. `None` when the
     /// response didn't carry one, which the UI treats the same as [`Rating::Indifferent`].
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -553,10 +554,7 @@ pub(crate) fn parse_list_item(node: &Value) -> Option<SongItem> {
                 .map(str::to_owned)
         })
         .flatten();
-    let (added_by, added_by_avatar) = match contributor(node) {
-        Some((name, avatar)) => (Some(name), Some(avatar)),
-        None => (None, None),
-    };
+    let (added_by, added_by_avatars) = contributors(node);
     Some(SongItem {
         video_id,
         title,
@@ -570,7 +568,7 @@ pub(crate) fn parse_list_item(node: &Value) -> Option<SongItem> {
         thumbnail: last_thumbnail(node),
         set_video_id,
         added_by,
-        added_by_avatar,
+        added_by_avatars,
         rating: like_status(node),
         queued_by: None,
         queued: false,
@@ -731,14 +729,36 @@ pub(crate) fn album_from_runs(runs: &[Value]) -> Option<String> {
 /// The track's rating from its menu's `likeStatus` (`LIKE` / `INDIFFERENT` / `DISLIKE`).
 /// Tolerant: grabs the first `likeStatus` anywhere in the node, and reads anything it doesn't
 /// recognise as unrated rather than dropping the row. context/08.
-/// The contributor who added this row, on a collaborative playlist: their display name and avatar
-/// URL. One avatar per row (whoever added it), in a stack renderer YouTube only sends there.
-fn contributor(node: &Value) -> Option<(String, String)> {
-    let stack = find_all(node, "contributorsAvatars").into_iter().next()?;
-    let avatar = find_all(stack, "avatarViewModel").into_iter().next()?;
-    let name = avatar.get("accessibilityText").and_then(Value::as_str)?;
-    let url = avatar.pointer("/image/sources/0/url").and_then(Value::as_str)?;
-    Some((name.to_owned(), url.to_owned()))
+/// Who added this row, on a collaborative playlist: their names for the tooltip and one avatar URL
+/// per person, off a stack renderer YouTube only sends there. A Taste Match row several members
+/// share stacks all of them, and a name is never required: the multi-person rows used to vanish
+/// whole because the first avatar carried none (#102). Each avatar's own `accessibilityText`
+/// first, else the stack's label.
+fn contributors(node: &Value) -> (Option<String>, Vec<String>) {
+    let Some(stack) = find_all(node, "contributorsAvatars").into_iter().next() else {
+        return (None, Vec::new());
+    };
+    let avatars = find_all(stack, "avatarViewModel");
+    let urls: Vec<String> = avatars
+        .iter()
+        .filter_map(|a| a.pointer("/image/sources/0/url").and_then(Value::as_str))
+        .map(str::to_owned)
+        .collect();
+    if urls.is_empty() {
+        return (None, urls);
+    }
+    let names: Vec<&str> =
+        avatars.iter().filter_map(|a| a.get("accessibilityText").and_then(Value::as_str)).collect();
+    let label = if names.is_empty() {
+        find_all(stack, "label")
+            .into_iter()
+            .chain(find_all(stack, "content"))
+            .find_map(Value::as_str)
+            .map(str::to_owned)
+    } else {
+        Some(names.join(", "))
+    };
+    (label, urls)
 }
 
 /// Does this row's menu carry "Remove from playlist"? The menu item is a `playlistEditEndpoint`
@@ -844,7 +864,7 @@ fn parse_panel_video(node: &Value) -> Option<SongItem> {
         thumbnail: last_thumbnail(node),
         set_video_id: None,
         added_by: None,
-        added_by_avatar: None,
+        added_by_avatars: Vec::new(),
         rating: like_status(node),
         queued_by: None,
         queued: false,
@@ -1827,7 +1847,27 @@ mod tests {
         });
         let item = parse_list_item(&node).unwrap();
         assert_eq!(item.added_by.as_deref(), Some("Rajat"));
-        assert_eq!(item.added_by_avatar.as_deref(), Some("https://yt3.ggpht.com/abc=s48"));
+        assert_eq!(item.added_by_avatars, ["https://yt3.ggpht.com/abc=s48"]);
+        // A Taste Match row two members share stacks both, and the names sit on the stack: the
+        // row must keep both avatars rather than vanish for lack of a per-avatar name (#102).
+        let shared = json!({
+            "playlistItemData": { "videoId": "vid1" },
+            "flexColumns": [{ "musicResponsiveListItemFlexColumnRenderer": {
+                "text": { "runs": [{ "text": "Alpha" }] } } }],
+            "contributorsAvatars": { "avatarStackViewModel": {
+                "avatars": [
+                    { "avatarViewModel": { "image": { "sources": [{ "url": "https://yt3.ggpht.com/a=s48" }] } } },
+                    { "avatarViewModel": { "image": { "sources": [{ "url": "https://yt3.ggpht.com/b=s48" }] } } }
+                ],
+                "rendererContext": { "accessibilityContext": { "label": "Irine and Rajat" } }
+            } }
+        });
+        let item = parse_list_item(&shared).unwrap();
+        assert_eq!(
+            item.added_by_avatars,
+            ["https://yt3.ggpht.com/a=s48", "https://yt3.ggpht.com/b=s48"]
+        );
+        assert_eq!(item.added_by.as_deref(), Some("Irine and Rajat"));
         // An ordinary playlist row has no stack, so no name to draw.
         assert_eq!(
             parse_list_item(&json!({

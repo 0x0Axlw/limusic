@@ -1277,7 +1277,7 @@ fn shed_queue_context(s: SongItem) -> SongItem {
         autoplay: false,
         set_video_id: None,
         added_by: None,
-        added_by_avatar: None,
+        added_by_avatars: Vec::new(),
         ..s
     }
 }
