@@ -43,7 +43,7 @@
 	import { typing } from '$lib/shortcuts';
 	import { appearance } from '$lib/theme.svelte';
 	import { t } from '$lib/i18n.svelte';
-	import { thumb } from '$lib/thumb';
+	import { isMissingThumb, thumb } from '$lib/thumb';
 	import ArtistLine from './ArtistLine.svelte';
 	import QueueList from './QueueList.svelte';
 	import LyricsView from './LyricsView.svelte';
@@ -363,6 +363,7 @@
 			{src}
 			alt=""
 			onerror={imgFailed}
+			onload={(e) => isMissingThumb(e) && imgFailed()}
 			style={srcs[2] ? `background-image:url(${srcs[2]})` : undefined}
 			class="aspect-square w-full rounded-2xl bg-cover object-cover {stage ? '' : 'shadow-2xl'}"
 		/>
