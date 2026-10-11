@@ -367,11 +367,13 @@
 	<ImportDialog />
 
 	<!-- The two notification banners below run at z-[100]. Dialogs and menus sit at z-50 and portal to
-	     <body>, so a z-50 banner loses the tie on DOM order and hides behind an open modal. -->
+	     <body>, so a z-50 banner loses the tie on DOM order and hides behind an open modal. The update
+	     banner also needs pointer-events-auto: an open dialog sets `pointer-events: none` on <body>,
+	     so without it the banner shows above the modal but its buttons can't be clicked. -->
 	{#if updateState.available}
 		<div
 			transition:fly={{ y: 16, duration: 220, easing: cubicOut }}
-			class="fixed bottom-24 left-1/2 z-[100] flex -translate-x-1/2 items-center gap-3 rounded-lg border bg-card px-4 py-2 text-sm shadow-lg"
+			class="pointer-events-auto fixed bottom-24 left-1/2 z-[100] flex -translate-x-1/2 items-center gap-3 rounded-lg border bg-card px-4 py-2 text-sm shadow-lg"
 		>
 			<span>{availableMessage(updateState.available)}</span>
 			{#if updateState.canInstall}
