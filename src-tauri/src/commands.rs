@@ -1326,7 +1326,15 @@ pub async fn get_album(state: St<'_>, id: String) -> Result<AlbumPage, String> {
         return Ok(crate::local::artist_page(&state.db, name));
     }
     let client = metadata_client(&state)?;
-    state.it.album(client, &id).await.map_err(|e| e.to_string())
+    let mut page = state.it.album(client, &id).await.map_err(|e| e.to_string())?;
+    // `album()` hands back the album audio for rows YouTube linked to a music video. With music
+    // videos on, those rows play the video, as on YouTube Music, with the song a switch away (#442).
+    if state.db.get_setting("music_videos").as_deref() == Some("true") {
+        for item in &mut page.items {
+            crate::state::swap_version(item);
+        }
+    }
+    Ok(page)
 }
 
 /// An artist page. `id` is the channel browseId (`UC…`).

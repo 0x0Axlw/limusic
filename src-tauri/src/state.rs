@@ -1800,6 +1800,8 @@ impl AppState {
             if !swap_version(item) {
                 return;
             }
+            // A video's cut runs its own length; `backfill_metadata` reads it off `/player`.
+            item.duration = None;
             if resume {
                 *self.pending_seek.lock().unwrap() = Some((item.video_id.clone(), pos));
             }
@@ -4359,13 +4361,11 @@ fn format_duration(ms: i64) -> String {
 }
 
 /// Trade a row's id for its `counterpart` (#442), keeping the old one as the way back. False when
-/// there is none. The duration goes too: a video's cut runs its own length, and `backfill_metadata`
-/// reads the new one off `/player`.
-fn swap_version(item: &mut SongItem) -> bool {
+/// there is none.
+pub(crate) fn swap_version(item: &mut SongItem) -> bool {
     let Some(other) = item.counterpart.take() else { return false };
     item.counterpart = Some(std::mem::replace(&mut item.video_id, other));
     item.is_video = !item.is_video;
-    item.duration = None;
     true
 }
 
@@ -4560,13 +4560,11 @@ mod tests {
         let mut it = innertube::SongItem {
             video_id: "audio".into(),
             counterpart: Some("video".into()),
-            duration: Some("3:17".into()),
             ..Default::default()
         };
         assert!(swap_version(&mut it));
         assert_eq!((it.video_id.as_str(), it.counterpart.as_deref()), ("video", Some("audio")));
         assert!(it.is_video);
-        assert_eq!(it.duration, None);
         assert!(swap_version(&mut it));
         assert_eq!((it.video_id.as_str(), it.counterpart.as_deref()), ("audio", Some("video")));
         assert!(!it.is_video);
