@@ -32,9 +32,10 @@ export interface SongItem {
 	thumbnail?: string;
 	/** Item id within a playlist — present only on playlist tracks; needed to remove them. */
 	set_video_id?: string;
-	/** Collaborative playlists only: who added this track, and their avatar. */
+	/** Collaborative playlists only: who added this track, and one avatar per person (several on a
+	 * Taste Match row more than one member shares). */
 	added_by?: string;
-	added_by_avatar?: string;
+	added_by_avatars?: string[];
 	/** The signed-in user's rating (absent when the response didn't say — same as 'indifferent'). */
 	rating?: Rating;
 	/** "Add to library" off the row's own menu, with a token for each direction. Absent on rows

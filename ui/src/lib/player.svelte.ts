@@ -1463,7 +1463,7 @@ export function notePlaylistAdd(playlistId: string, songs: SongItem[]) {
 		...s,
 		set_video_id: undefined,
 		added_by: undefined,
-		added_by_avatar: undefined,
+		added_by_avatars: undefined,
 		autoplay: undefined,
 		queued: undefined,
 		queued_end: undefined,
