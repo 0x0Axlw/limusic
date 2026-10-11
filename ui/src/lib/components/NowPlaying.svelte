@@ -31,8 +31,9 @@
 		wheelVolume
 	} from '$lib/player.svelte';
 	import {
-		canVideo,
+		canSwitch,
 		claimVideo,
+		counterpart,
 		parkVideo,
 		setHole,
 		showVideo,
@@ -136,6 +137,26 @@
 	const ART_SIDE = 'min(100cqw, 100cqh - 9.5rem, 44rem)';
 	const VIDEO_SIDE = 'min(100cqw, (100cqh - 9.5rem) * 16 / 9, 80rem)';
 
+	// Song/Video. With a twin to switch to (#442) it changes what plays, the way YouTube Music's
+	// does; without one it shows or hides the video this track already is. `switching` holds the
+	// side just picked while the other version resolves, which takes a second or two.
+	let switching = $state<boolean | null>(null);
+	const videoSide = $derived(switching ?? (!!playback.now?.isVideo && video.want));
+	async function pick(on: boolean) {
+		if (on === videoSide) return;
+		if (!counterpart() || on === !!playback.now?.isVideo) {
+			video.want = on;
+			return;
+		}
+		if (on) video.want = true;
+		switching = on;
+		try {
+			await api.switchVersion();
+		} finally {
+			switching = null;
+		}
+	}
+
 	// Clicking the artwork toggles playback, and flashes the action just taken over it so the click
 	// visibly did something. Read `paused` before the toggle: the backend event that flips it is a
 	// round trip away, and the icon has to be right on the frame the user clicked.
@@ -231,9 +252,9 @@
 {#snippet mode(on: boolean, label: string)}
 	<button
 		type="button"
-		onclick={() => (video.want = on)}
-		aria-pressed={video.want === on}
-		class="cursor-pointer rounded-full px-4 py-1 text-sm font-medium transition-colors {video.want ===
+		onclick={() => pick(on)}
+		aria-pressed={videoSide === on}
+		class="cursor-pointer rounded-full px-4 py-1 text-sm font-medium transition-colors {videoSide ===
 		on
 			? 'bg-background text-foreground shadow-sm'
 			: 'text-muted-foreground hover:text-foreground'}"
@@ -523,7 +544,7 @@
 					</button>
 					<!-- The user's choice, not what is on screen: "Video" stays picked while the
 					     picture is still loading, and the artwork stands in until it arrives. -->
-					{#if canVideo()}
+					{#if canSwitch()}
 						<div class="flex rounded-full bg-foreground/[0.07] p-1" role="group" data-np-keep>
 							{@render mode(false, t('player.song'))}
 							{@render mode(true, t('player.video'))}
@@ -689,12 +710,12 @@
 					>
 						{#if volFlash}{@render volPlate()}{/if}
 						{@render picture()}
-						{#if canVideo()}
+						{#if canSwitch()}
 							<!-- Both directions, or there is no way back to the video. On a plate, since
 							     it sits over whatever frame happens to be showing. -->
 							<button
 								type="button"
-								onclick={() => (video.want = !video.want)}
+								onclick={() => pick(!videoSide)}
 								aria-label={showVideo() ? t('a11y.show_artwork') : t('a11y.show_video')}
 								class="absolute right-3 top-3 z-10 cursor-pointer rounded-md bg-black/40 p-1.5 text-white/70 transition-colors hover:text-white"
 							>

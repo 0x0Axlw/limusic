@@ -96,6 +96,14 @@ pub async fn play_index(state: St<'_>, index: usize) -> Result<(), String> {
     Ok(())
 }
 
+/// The player view's Song/Video switch: the playing track's other version, same position (#442).
+#[tauri::command]
+pub async fn switch_version(state: St<'_>) -> Result<(), String> {
+    let state = state.inner().clone();
+    state.switch_version().await;
+    Ok(())
+}
+
 /// Remove an upcoming track from the queue (not the one playing). Guests are add-only — blocked
 /// inside AppState.
 #[tauri::command]

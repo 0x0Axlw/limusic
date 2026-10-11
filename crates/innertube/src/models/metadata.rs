@@ -79,6 +79,11 @@ pub struct SongItem {
     /// "hide music videos" setting; computed once here, never re-derived downstream.
     #[serde(default)]
     pub is_video: bool,
+    /// The same song's other version: the music video for an audio track, or the audio track for
+    /// a video. What the player's Song/Video switch swaps to (#442). Known only where YouTube
+    /// pairs them: an album row we swapped to its audio id, and a signed-in radio's wrapper rows.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub counterpart: Option<String>,
     /// One of the signed-in user's own uploads ([`is_upload_row`]). Only an authenticated client
     /// can stream these, so the orchestrator swaps in a login-only fallback chain. Issue #71.
     #[serde(default)]
@@ -286,8 +291,9 @@ pub fn parse_next(root: &Value) -> NextResult {
     let mut items = Vec::new();
     let mut rows = Vec::new();
     panel_rows(root, &mut rows);
-    for node in rows {
-        if let Some(item) = parse_panel_video(node) {
+    for (node, counterpart) in rows {
+        if let Some(mut item) = parse_panel_video(node) {
+            item.counterpart = counterpart;
             items.push(item);
         }
     }
@@ -312,17 +318,26 @@ pub fn parse_next(root: &Value) -> NextResult {
 /// `playlistPanelVideoWrapperRenderer`. A signed-in radio wraps each track's audio row together
 /// with its music-video twin (what YouTube's own Song/Video toggle switches between), so a plain
 /// [`find_all`] takes both and the queue gets every song twice. Issue #170.
-fn panel_rows<'a>(node: &'a Value, out: &mut Vec<&'a Value>) {
+///
+/// The twin's id rides along with its primary row instead, for our own Song/Video switch (#442).
+fn panel_rows<'a>(node: &'a Value, out: &mut Vec<(&'a Value, Option<String>)>) {
     match node {
         Value::Object(map) => {
+            let start = out.len();
             for (k, v) in map {
                 if k == "counterpart" {
                     continue;
                 }
                 if k == "playlistPanelVideoRenderer" {
-                    out.push(v);
+                    out.push((v, None));
                 }
                 panel_rows(v, out);
+            }
+            if let Some(twin) = map.get("counterpart").and_then(|c| find_first_str(c, "videoId")) {
+                // A wrapper holds exactly one primary row; anything else is a shape we don't know.
+                if let [(_, slot)] = &mut out[start..] {
+                    *slot = Some(twin);
+                }
             }
         }
         Value::Array(arr) => arr.iter().for_each(|e| panel_rows(e, out)),
@@ -563,6 +578,7 @@ pub(crate) fn parse_list_item(node: &Value) -> Option<SongItem> {
         queued_from: None,
         autoplay: false,
         is_video: is_video_row(node),
+        counterpart: None,
         is_upload: is_upload_row(node),
         explicit: is_explicit(node),
         library: library_toggle(node),
@@ -836,6 +852,7 @@ fn parse_panel_video(node: &Value) -> Option<SongItem> {
         queued_from: None,
         autoplay: false,
         is_video: is_video_row(node),
+        counterpart: None,
         is_upload: is_upload_row(node),
         // Queue-panel rows carry no badges today; asking anyway costs a map lookup and picks the
         // flag up for free if YouTube ever adds one.
@@ -1310,6 +1327,9 @@ mod tests {
         let out = parse_next(&root);
         let ids: Vec<&str> = out.items.iter().map(|i| i.video_id.as_str()).collect();
         assert_eq!(ids, ["audio1", "plain1"]);
+        // The twin is kept on its primary for the Song/Video switch (#442), and only there.
+        assert_eq!(out.items[0].counterpart.as_deref(), Some("video1"));
+        assert_eq!(out.items[1].counterpart, None);
     }
 
     // A real radio page has no automix marker — nothing to escalate to, and nothing to mistake a

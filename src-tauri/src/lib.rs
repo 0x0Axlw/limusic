@@ -832,6 +832,7 @@ pub fn run() {
             commands::song,
             commands::play,
             commands::play_index,
+            commands::switch_version,
             commands::remove_from_queue,
             commands::clear_queued,
             commands::add_to_queue,

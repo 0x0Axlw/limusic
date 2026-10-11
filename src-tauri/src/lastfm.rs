@@ -212,6 +212,8 @@ pub struct Track {
     is_video: bool,
     /// Only read for the joiner between artists, see [`primary_artist`].
     artist_runs: Vec<ArtistRun>,
+    /// The other version of this song, see [`Scrobbler::apply`].
+    counterpart: Option<String>,
 }
 
 impl From<&SongItem> for Track {
@@ -223,6 +225,7 @@ impl From<&SongItem> for Track {
             album: item.album.clone(),
             is_video: item.is_video,
             artist_runs: item.artist_runs.clone(),
+            counterpart: item.counterpart.clone(),
         }
     }
 }
@@ -336,7 +339,16 @@ impl Scrobbler {
     async fn apply(&mut self, msg: Msg) {
         match msg {
             Msg::Track(t) => {
+                // The Song/Video switch (#442) is the same listen of the same song, carried on
+                // from the same place: keep its clock, or it scrobbles twice.
+                let switched = self
+                    .track
+                    .as_ref()
+                    .is_some_and(|c| t.counterpart.as_deref() == Some(c.video_id.as_str()));
                 self.track = Some(*t);
+                if switched {
+                    return;
+                }
                 self.started_at = now_secs();
                 self.duration = 0.0;
                 self.scrobbled = false;
@@ -1099,6 +1111,7 @@ mod tests {
             album: None,
             is_video,
             artist_runs: Vec::new(),
+            counterpart: None,
         }
     }
 
