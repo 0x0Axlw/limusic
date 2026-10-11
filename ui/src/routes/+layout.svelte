@@ -327,7 +327,9 @@
 	<ImportDialog />
 
 	<!-- The two notification banners below run at z-[100]. Dialogs and menus sit at z-50 and portal to
-	     <body>, so a z-50 banner loses the tie on DOM order and hides behind an open modal. -->
+	     <body>, so a z-50 banner loses the tie on DOM order and hides behind an open modal. The update
+	     banner also needs pointer-events-auto: an open dialog sets `pointer-events: none` on <body>,
+	     so without it the banner shows above the modal but its buttons can't be clicked. -->
 	{#if updateState.available}
 		<div
 			transition:fly={{ y: 16, duration: 220, easing: cubicOut }}
