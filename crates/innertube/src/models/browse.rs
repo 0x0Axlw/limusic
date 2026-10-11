@@ -843,9 +843,14 @@ pub fn parse_album(root: &Value) -> AlbumPage {
                 it.artist_id = it.artist_id.take().or_else(|| artist_id.clone());
                 it.artist_runs = runs.clone();
             }
-            if it.album.is_none() {
-                it.album = title.clone();
-            }
+            // Every row here is a track of the release this page is for, so the page title is
+            // the album — stamp it over whatever the row parsed with. That guard used to be
+            // `if it.album.is_none()`, and it let the count through: an album row keeps its artist
+            // column empty and puts the count alone in the third one with nothing to link, so
+            // `album_column` takes it for a name on every locale that writes the count with the
+            // word first ("Tocou 25 mi vezes"). The guard then saw a filled album and stood down,
+            // and the card showed a count where the release goes. Issue #451.
+            it.album.clone_from(&title);
             it
         })
         .collect();
@@ -2117,6 +2122,32 @@ mod tests {
         // Every track on an album page is on *this* album; Last.fm takes the album too.
         assert_eq!(a.items[0].album.as_deref(), Some("Sjelen"));
         assert_eq!(a.items[1].album.as_deref(), Some("Sjelen"));
+    }
+
+    /// An album row has nothing to link in its play-count column, so `album_column` guesses, and the
+    /// header stamp used to stand behind that guess. It only filled an album that was still
+    /// empty, and by then the count had filled it, so the page title never arrived.
+    #[test]
+    fn an_album_page_stamps_its_title_over_a_localized_play_count() {
+        let root = json!({
+            "header": { "musicResponsiveHeaderRenderer": {
+                "title": { "runs": [{ "text": "Even In Arcadia" }] }
+            } },
+            "contents": { "musicShelfRenderer": { "contents": [
+                { "musicResponsiveListItemRenderer": {
+                    "playlistItemData": { "videoId": "vid1" },
+                    "flexColumns": [
+                        { "musicResponsiveListItemFlexColumnRenderer": { "text": { "runs": [{ "text": "Dangerous" }] } } },
+                        { "musicResponsiveListItemFlexColumnRenderer": { "text": {} } },
+                        { "musicResponsiveListItemFlexColumnRenderer": {
+                            "text": { "runs": [{ "text": "Tocou 25\u{a0}mi vezes" }] } } }
+                    ]
+                } }
+            ] } }
+        });
+        let a = parse_album(&root);
+        assert_eq!(a.items[0].title, "Dangerous");
+        assert_eq!(a.items[0].album.as_deref(), Some("Even In Arcadia"));
     }
 
     /// The header's save-to-library toggle: `isToggled` is the state, and its like target carries
