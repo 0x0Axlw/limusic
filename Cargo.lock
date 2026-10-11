@@ -3382,6 +3382,7 @@ dependencies = [
  "lofty",
  "md-5",
  "notify-rust",
+ "objc2",
  "pinyin",
  "player",
  "rand 0.8.6",
