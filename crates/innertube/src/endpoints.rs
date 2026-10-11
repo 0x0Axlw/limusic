@@ -776,7 +776,11 @@ impl InnerTube {
                             page.items.iter_mut().zip(&video).zip(audio.items)
                         {
                             if *is_video {
-                                item.video_id = audio_item.video_id;
+                                // The video stays reachable through the Song/Video switch.
+                                item.counterpart = Some(std::mem::replace(
+                                    &mut item.video_id,
+                                    audio_item.video_id,
+                                ));
                                 item.duration = audio_item.duration.or(item.duration.take());
                                 // The row linked the MV, but the id it now carries is the audio
                                 // track: leaving the flag set would put the player view's video

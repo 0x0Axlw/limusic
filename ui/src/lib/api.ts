@@ -57,6 +57,9 @@ export interface SongItem {
 	explicit?: boolean;
 	/** This row links a music video rather than the audio track. */
 	is_video?: boolean;
+	/** The same song's other version (its music video, or back to the audio track), when YouTube
+	 *  paired them. What the player view's Song/Video switch plays (#442). */
+	counterpart?: string;
 	/** One of the user's own YouTube Music uploads. Set by Rust and passed straight back on play:
 	 *  only an authenticated client can stream one, and the row is where that is known. */
 	is_upload?: boolean;
@@ -365,6 +368,8 @@ export const searchCards = (query: string, category: 'albums' | 'artists' | 'pla
 	invoke<BrowseItem[]>('search_cards', { query, category });
 export const play = (item: SongItem) => invoke<void>('play', { item });
 export const playIndex = (index: number) => invoke<void>('play_index', { index });
+/** Play the current track's `counterpart` from the same position. Resolves once it plays. */
+export const switchVersion = () => invoke<void>('switch_version');
 /** Remove an upcoming track from the queue (host/local only — guests are add-only). */
 export const removeFromQueue = (index: number) => invoke<void>('remove_from_queue', { index });
 /** Drag-to-reorder: move the upcoming queue item at `from` to index `to` (both past the playing
