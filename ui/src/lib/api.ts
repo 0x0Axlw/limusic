@@ -272,10 +272,18 @@ export interface PlaylistPage {
 	collaborative: boolean;
 	/** Absent on lists YouTube will not reorder: albums, its own radio mixes, On Repeat. */
 	sortMenu?: SortMenu;
+	/** YouTube's own suggestions shelf (`getPlaylistSuggestions`), on playlists you own under 100
+	 *  tracks. The rest get suggestions all the same, from the playlist's radio. */
+	suggestions?: string;
 }
 export interface PlaylistContinuation {
 	items: SongItem[];
 	continuation?: string;
+}
+/** One batch of suggestions; `refresh` swaps it for a fresh one. */
+export interface PlaylistSuggestions {
+	items: SongItem[];
+	refresh?: string;
 }
 
 export interface ArtistCarousel {
@@ -343,6 +351,8 @@ export const search = (query: string, recordHistory = false) =>
 /** Video uploads only: covers, live sets and remixes with no official release. Empty when the
  *  "hide music videos" setting is on. */
 export const searchVideos = (query: string) => invoke<SongItem[]>('search_videos', { query });
+/** One song or video by id, title and art included (a pasted YouTube link). */
+export const song = (videoId: string) => invoke<SongItem>('song', { videoId });
 /** Unfiltered search → categorized sections. */
 export const searchAll = (query: string, recordHistory = false) =>
 	invoke<SearchResults>('search_all', { query, recordHistory });
@@ -719,6 +729,9 @@ export const setPlaylistSort = (playlistId: string, sort: ServerSort) =>
 	invoke<void>('set_playlist_sort', { playlistId, sort });
 export const getPlaylistMore = (token: string) =>
 	invoke<PlaylistContinuation>('get_playlist_more', { token });
+/** `token` is `PlaylistPage.suggestions`, the last batch's `refresh`, or nothing at all. */
+export const getPlaylistSuggestions = (playlistId: string, token?: string) =>
+	invoke<PlaylistSuggestions>('get_playlist_suggestions', { playlistId, token });
 /**
  * videoId → the ids of the playlists you own that hold it. Read straight from local SQLite, so it
  * answers instantly and is empty until `syncPlaylistIndex` has filled it in at least once.
@@ -1122,6 +1135,8 @@ export interface ScrobbleTrack {
 	artists: string;
 	album?: string | null;
 	is_video?: boolean;
+	/** Tells `resolve` which word YouTube joined the artists with in this language (#439). */
+	artist_runs?: ArtistRun[];
 }
 /** `Resolved` in lastfm.rs: what a track scrobbles as, and which settings made it so. */
 export interface ScrobblePreview {

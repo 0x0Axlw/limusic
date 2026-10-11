@@ -6,8 +6,8 @@ use std::sync::Arc;
 use innertube::{
     ActionError, AlbumPage, ArtistPage, BrowseItem, Comment, CommentAction, CommentReplies,
     CommentThread, CommentWrite, CommentsPage, HistoryGroup, HomePage, MoodSection,
-    PlaylistContinuation, PlaylistPage, PlaylistSort, Provenance, Rating, SearchResults,
-    SearchSuggestions, SongItem, VoteState,
+    PlaylistContinuation, PlaylistPage, PlaylistSort, PlaylistSuggestions, Provenance, Rating,
+    SearchResults, SearchSuggestions, SongItem, VoteState,
 };
 use tauri::{Emitter, Manager, State};
 
@@ -40,6 +40,15 @@ pub async fn search_videos(state: St<'_>, query: String) -> Result<Vec<SongItem>
     let client = metadata_client(&state)?;
     let result = state.it.search_videos(client, &query).await.map_err(|e| e.to_string())?;
     Ok(result.items)
+}
+
+/// One song or video by id, for a pasted YouTube link (#441). `/next` is the one call that answers
+/// with the id's own title, artists and art; the seed comes back as one of its rows.
+#[tauri::command]
+pub async fn song(state: St<'_>, video_id: String) -> Result<SongItem, String> {
+    let client = metadata_client(&state)?;
+    let next = state.it.next(client, Some(&video_id), None).await.map_err(|e| e.to_string())?;
+    next.items.into_iter().find(|i| i.video_id == video_id).ok_or_else(|| "not_found".into())
 }
 
 /// Unfiltered search → categorized sections for the search page. `record_history` as in [`search`].
@@ -1195,6 +1204,7 @@ pub async fn get_playlist(
             owned: false, // nothing to rename or delete; it rebuilds itself from what you play
             collaborative: false,
             sort_menu: None, // built from local history, so YouTube has no order to give
+            suggestions: None,
         });
     }
     if is_local_playlist(&id) {
@@ -1277,6 +1287,22 @@ pub async fn get_playlist_more(
 ) -> Result<PlaylistContinuation, String> {
     let client = metadata_client(&state)?;
     state.it.playlist_continuation(client, &token).await.map_err(|e| e.to_string())
+}
+
+/// A batch of suggestions for a playlist you own (#395). `token` is the page's `suggestions`, the
+/// previous batch's `refresh`, or nothing (see `InnerTube::playlist_suggestions`).
+#[tauri::command]
+pub async fn get_playlist_suggestions(
+    state: St<'_>,
+    playlist_id: String,
+    token: Option<String>,
+) -> Result<PlaylistSuggestions, String> {
+    let client = metadata_client(&state)?;
+    state
+        .it
+        .playlist_suggestions(client, &playlist_id, token.as_deref())
+        .await
+        .map_err(|e| e.to_string())
 }
 
 /// An album page. `id` is the album browseId (`MPRE…`).
@@ -1945,6 +1971,7 @@ fn local_playlist_page(state: &Arc<AppState>, id: &str) -> Result<PlaylistPage, 
         owned: true,
         collaborative: false,
         sort_menu: None, // no server to keep an order, so every sort is done on the page
+        suggestions: None, // YouTube suggests only for its own playlists
     })
 }
 
