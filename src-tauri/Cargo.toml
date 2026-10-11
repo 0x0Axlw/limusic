@@ -78,6 +78,11 @@ csv = "1"
 strsim = "0.11"
 unicode-normalization = "0.1"
 
+# Letting a song notification show while Limusic is frontmost (notify.rs, #94). Same objc2 that
+# mac-notification-sys and tao already pull in.
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2 = "0.6"
+
 # Taskbar thumbnail toolbar (#47). Same `windows` version tauri-runtime-wry already pulls in, so
 # `Window::hwnd()` hands us a matching HWND.
 [target.'cfg(target_os = "windows")'.dependencies]

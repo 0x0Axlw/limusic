@@ -2485,7 +2485,13 @@ impl AppState {
         if stream_client != "restored"
             && self.db.get_setting("track_notifications").as_deref() == Some("true")
         {
-            crate::notify::track_changed(&self.app, &item.title, &item.artists);
+            // A gapless advance or a Listen Together host's change started on its own, so with the
+            // opt-in it notifies even with Limusic in front (#94). Ceiling: the rare non-primed
+            // advance at track end comes through `start_current` like a user's pick, and stays
+            // background-only.
+            let even_focused = matches!(stream_client, "gapless" | "listen-together")
+                && self.db.get_setting("track_notifications_focused").as_deref() == Some("true");
+            crate::notify::track_changed(&self.app, &item.title, &item.artists, even_focused);
         }
         self.lastfm.set_track(item);
         // New track ⇒ let the next position tick through immediately instead of waiting out the
