@@ -823,7 +823,7 @@ pub fn run() {
             }
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![
+        .invoke_handler(only_ui(tauri::generate_handler![
             commands::search,
             commands::search_all,
             commands::search_suggestions,
@@ -973,7 +973,7 @@ pub fn run() {
             commands::diagnostics_summary,
             commands::save_diagnostics,
             commands::log_ui,
-        ])
+        ]))
         .on_window_event(|window, event| {
             // Close-to-tray: ✕ hides the main window and playback keeps running; real quit is
             // the tray's Quit item (or the "close_to_tray=false" setting). Label-gated: the
@@ -1029,6 +1029,23 @@ pub fn run() {
                 mini::save_position(handle);
             }
         });
+}
+
+/// Let app commands answer only the UI's own windows. Tauri checks capabilities for plugin
+/// commands, but without an app ACL manifest an app command is open to any webview on a local
+/// origin, and the hidden cipher webview is one: its `limusicharness://` document runs YouTube's
+/// player.js. It needs no IPC, the bridge drives it through eval callbacks (`webview.rs`). The
+/// login windows load remote pages, which Tauri refuses on its own.
+fn only_ui<R: tauri::Runtime>(
+    handler: impl Fn(tauri::ipc::Invoke<R>) -> bool + Send + Sync + 'static,
+) -> impl Fn(tauri::ipc::Invoke<R>) -> bool + Send + Sync + 'static {
+    move |invoke| {
+        if matches!(invoke.message.webview_ref().label(), "main" | mini::LABEL) {
+            return handler(invoke);
+        }
+        invoke.resolver.reject("not allowed from this webview");
+        true
+    }
 }
 
 /// ✕ hides to tray unless the user explicitly set close_to_tray=false (unset → default on).
@@ -1159,6 +1176,38 @@ fn spawn_event_pump(
 mod tests {
     use super::{close_hides, PositionThrottle};
     use std::time::{Duration, Instant};
+
+    #[tauri::command]
+    fn ping() {}
+
+    /// The hidden cipher webview runs YouTube's player.js on a local origin, so Tauri lets it
+    /// reach app commands unless `only_ui` turns it away.
+    #[test]
+    fn app_commands_answer_only_the_ui() {
+        let app = tauri::test::mock_builder()
+            .invoke_handler(super::only_ui(tauri::generate_handler![ping]))
+            .build(tauri::test::mock_context(tauri::test::noop_assets()))
+            .unwrap();
+        for (label, allowed) in [("main", true), ("mini", true), ("cipher", false)] {
+            let wv =
+                tauri::WebviewWindowBuilder::new(&app, label, Default::default()).build().unwrap();
+            let res = tauri::test::get_ipc_response(
+                &wv,
+                tauri::webview::InvokeRequest {
+                    cmd: "ping".into(),
+                    callback: tauri::ipc::CallbackFn(0),
+                    error: tauri::ipc::CallbackFn(1),
+                    url: if cfg!(windows) { "http://tauri.localhost" } else { "tauri://localhost" }
+                        .parse()
+                        .unwrap(),
+                    body: Default::default(),
+                    headers: Default::default(),
+                    invoke_key: tauri::test::INVOKE_KEY.into(),
+                },
+            );
+            assert_eq!(res.is_ok(), allowed, "{label}");
+        }
+    }
 
     /// `tauri.macos.conf.json` overrides the main window so macOS gets real traffic lights over the
     /// app's own titlebar (issue #65). Tauri merges platform config with RFC 7386 JSON Merge Patch,
