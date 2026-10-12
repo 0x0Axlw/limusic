@@ -907,6 +907,7 @@ pub fn run() {
             commands::remove_local_folder,
             commands::allow_font_file,
             commands::get_artist,
+            commands::get_artist_appears_on,
             commands::get_browse_grid,
             commands::get_moods,
             commands::get_mood_art,

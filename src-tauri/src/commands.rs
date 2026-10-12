@@ -1345,6 +1345,18 @@ pub async fn get_artist(state: St<'_>, id: String) -> Result<ArtistPage, String>
     state.it.artist(client, &id).await.map_err(|e| e.to_string())
 }
 
+/// The artist page's "Appears on" shelf (#456). `songs_id` is the page's `topSongsId`. Its own
+/// call so the page paints without waiting on the second browse it costs.
+#[tauri::command]
+pub async fn get_artist_appears_on(
+    state: St<'_>,
+    id: String,
+    songs_id: String,
+) -> Result<Vec<BrowseItem>, String> {
+    let client = metadata_client(&state)?;
+    state.it.artist_appears_on(client, &id, &songs_id).await.map_err(|e| e.to_string())
+}
+
 /// Moods & Genres, the tiles the search page opens on.
 #[tauri::command]
 pub async fn get_moods(state: St<'_>) -> Result<Vec<MoodSection>, String> {

@@ -781,6 +781,9 @@ export const startRadio = (kind: 'song' | 'artist' | 'album' | 'playlist', id: s
 	invoke<void>('start_radio', { kind, id, name });
 export const getAlbum = (id: string) => invoke<AlbumPage>('get_album', { id });
 export const getArtist = (id: string) => invoke<ArtistPage>('get_artist', { id });
+/** Other artists' releases this one is featured on (#456). `songsId` is the page's `topSongsId`. */
+export const getArtistAppearsOn = (id: string, songsId: string) =>
+	invoke<BrowseItem[]>('get_artist_appears_on', { id, songsId });
 /** A Moods & Genres tile. `params` browses `MOODS_CATEGORY_ID` into that mood's playlists. */
 export interface Mood {
 	title: string;

@@ -257,7 +257,8 @@
 		"subscribed": "Subscribed",
 		"subscribe_to": "Subscribe to {name}",
 		"unsubscribe_from": "Unsubscribe from {name}",
-		"top_songs": "Top songs"
+		"top_songs": "Top songs",
+		"appears_on": "Appears on"
 	},
 	"library": {
 		"title": "Library",

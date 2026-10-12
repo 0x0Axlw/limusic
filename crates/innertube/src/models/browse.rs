@@ -1031,6 +1031,39 @@ pub(crate) fn radio_playlist_id(node: &Value) -> Option<String> {
         .map(str::to_owned)
 }
 
+/// The "Appears on" shelf (#456): other artists' releases `artist_id` is featured on. YouTube Music
+/// has no such shelf, but the artist's top-songs playlist (`top_songs_id`) credits every track they
+/// are on, so a row led by somebody else is a feature on that artist's release. One card per
+/// release, in the playlist's order (most played first), subtitled with the lead artist.
+pub fn appears_on(songs: &[SongItem], artist_id: &str) -> Vec<BrowseItem> {
+    let mut seen = std::collections::HashSet::new();
+    songs
+        .iter()
+        .filter(|s| s.artist_id.as_deref().is_some_and(|a| a != artist_id))
+        .filter_map(|s| {
+            let id = s.album_id.clone()?;
+            let lead = s.artist_runs.first();
+            Some(BrowseItem {
+                kind: "album",
+                title: s.album.clone()?,
+                subtitle: Some(lead.map_or_else(|| s.artists.clone(), |r| r.text.clone())),
+                thumbnail: s.thumbnail.clone(),
+                duration: None,
+                album_id: None,
+                // The lead only: it stands for the release's artist, which is what the
+                // blocked-artist filter should match, not every guest on this one track.
+                artist_runs: lead.cloned().into_iter().collect(),
+                play_count: None,
+                is_video: false,
+                is_upload: false,
+                explicit: false,
+                id,
+            })
+        })
+        .filter(|c| seen.insert(c.id.clone()))
+        .collect()
+}
+
 fn parse_artist_carousel(node: &Value) -> Option<ArtistCarousel> {
     let header = find_all(node, "musicCarouselShelfBasicHeaderRenderer").into_iter().next();
     let title = header.and_then(|h| runs_text(h.get("title"))).unwrap_or_default();
@@ -1248,6 +1281,24 @@ pub(crate) fn continuation_token(root: &Value) -> Option<String> {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    // underscores' top songs, trimmed to six rows: two of their own, then features on Oklou's
+    // "choke enough", Danny Brown's "Stardust" (twice) and Yaeji's "booboo2". Captured 2026-10-12.
+    #[test]
+    fn appears_on_keeps_releases_someone_else_leads_once_each() {
+        let root: Value = serde_json::from_str(include_str!(
+            "../../tests/fixtures/artist_top_songs_features.json"
+        ))
+        .unwrap();
+        let cards = appears_on(&parse_playlist(&root).items, "UCUdMQSZu3e12dk_DREEz80w");
+        let got: Vec<_> =
+            cards.iter().map(|c| (c.title.as_str(), c.subtitle.as_deref().unwrap())).collect();
+        assert_eq!(
+            got,
+            [("choke enough", "Oklou"), ("Stardust", "Danny Brown"), ("booboo2", "Yaeji")]
+        );
+        assert!(cards.iter().all(|c| c.kind == "album" && c.id.starts_with("MPRE")));
+    }
 
     // An artist radio id can't be built client-side (no `RD…` prefix trick) — it only exists in
     // the header's start-radio button, next to a pile of other playlist ids that aren't radios.
