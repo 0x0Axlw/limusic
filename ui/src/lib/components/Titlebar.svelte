@@ -16,6 +16,7 @@
 		Refresh03Icon,
 		MinusSignIcon,
 		SquareIcon,
+		CopyIcon,
 		Cancel01Icon,
 		MinimizeScreenIcon,
 		CameraVideoIcon,
@@ -306,9 +307,17 @@
 			<button
 				class="flex h-full w-11 items-center justify-center text-muted-foreground transition-colors hover:bg-accent/10 hover:text-foreground"
 				onclick={() => w.toggleMaximize()}
-				aria-label={t('common.maximize')}
+				aria-label={win.maximized ? t('common.restore') : t('common.maximize')}
 			>
-				<HugeiconsIcon icon={SquareIcon} class="h-3.5 w-3.5" />
+				<!-- Maximized: the restore glyph, two overlapping squares with the front one low-left.
+				     That is CopyIcon turned half a turn. altIcon/showAlt, since `icon` is frozen at
+				     mount (#428). -->
+				<HugeiconsIcon
+					icon={SquareIcon}
+					altIcon={CopyIcon}
+					showAlt={win.maximized}
+					class="h-3.5 w-3.5 {win.maximized ? 'rotate-180' : ''}"
+				/>
 			</button>
 			<button
 				class="flex h-full w-11 items-center justify-center text-muted-foreground transition-colors hover:text-destructive"
