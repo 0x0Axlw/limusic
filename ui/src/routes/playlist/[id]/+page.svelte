@@ -524,8 +524,12 @@
 		if (!pl) return false;
 		const pid = id;
 		const row: SongItem = { ...song, set_video_id: undefined };
-		pl = { ...pl, items: [...pl.items, row] };
-		cacheCurrent();
+		// Picked from the dock with pages still to come, the foot of the list isn't loaded: appended
+		// here the row would sit mid-list, then come again with the last page. It arrives with that.
+		if (!pl.continuation) {
+			pl = { ...pl, items: [...pl.items, row] };
+			cacheCurrent();
+		}
 		const drop = () => {
 			if (pid !== id || !pl) return;
 			pl = { ...pl, items: pl.items.filter((t) => t !== row) };
@@ -1199,20 +1203,21 @@
 					{/if}
 				{/if}
 			</div>
-			<!-- After the last row, so only once every page is in, and not under a filter's matches,
-			     which it would read as part of. Outside the list's wrapper so a re-sort doesn't dim it.
-			     Every playlist of yours on YouTube: one with no shelf of its own gets its radio's. -->
-			{#if editable && !isLocalList && !pl.continuation && !filtering}
-				<div class="px-4 pb-6">
-					{#key id}
-						<PlaylistSuggestions
-							playlistId={id}
-							token={pl.suggestions}
-							current={() => pl?.items ?? []}
-							onadd={addSuggestion}
-						/>
-					{/key}
-				</div>
+			<!-- After the last row, so only once every page is in (`inline`; the corner dock reaches it
+			     before then), and not under a filter's matches, which it would read as part of. Kept
+			     mounted under a filter all the same, so clearing one doesn't fetch a fresh batch. Outside
+			     the list's wrapper so a re-sort doesn't dim it. Every playlist of yours on YouTube: one
+			     with no shelf of its own gets its radio's. -->
+			{#if editable && !isLocalList}
+				{#key id}
+					<PlaylistSuggestions
+						playlistId={id}
+						token={pl.suggestions}
+						current={() => pl?.items ?? []}
+						onadd={addSuggestion}
+						inline={!pl.continuation && !filtering}
+					/>
+				{/key}
 			{/if}
 		</div>
 	{/if}
