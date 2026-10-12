@@ -3195,8 +3195,14 @@ impl AppState {
                 self.apply_crossfade().await;
                 self.lt_apply_state(state).await
             }
-            SyncCommand::ChangeTrack { track, position_ms, playing, queue } => {
+            SyncCommand::ChangeTrack { track: Some(track), position_ms, playing, queue } => {
                 self.lt_apply_change_track(track, position_ms, playing, queue).await
+            }
+            // The host moved to something we can't play (a local file). Carrying on with the last
+            // song would put us out of step with the room, so wait for the next one.
+            SyncCommand::ChangeTrack { track: None, queue, .. } => {
+                let _ = self.player.pause();
+                self.lt_mirror_queue(queue).await;
             }
             SyncCommand::Play { position_ms } => self.lt_apply_play(position_ms).await,
             SyncCommand::Pause { position_ms } => self.lt_apply_pause(position_ms).await,
