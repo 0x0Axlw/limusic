@@ -164,6 +164,32 @@ pub(crate) fn tune_webview_labelled(app: &tauri::AppHandle, label: &str, media: 
     }
 }
 
+/// Pull the main window back onto a display if the window-state plugin restored it somewhere that
+/// no longer exists (#459). The plugin keeps a saved position when any one corner lands on a
+/// monitor, so after a layout change the window could come back with only its invisible resize
+/// border on screen and no titlebar to drag. Called from `setup`: the plugin has restored by then
+/// (it runs as the config window is built, just before), and the window is still hidden.
+///
+/// Wayland gives the app no real position and ignores `center`, which is fine: the compositor
+/// places the window there, so the bug cannot happen.
+fn keep_on_screen(w: &tauri::WebviewWindow) {
+    let (Ok(p), Ok(size)) = (w.outer_position(), w.outer_size()) else { return };
+    if mini::on_a_display(w, p, size) {
+        return;
+    }
+    tracing::info!(x = p.x, y = p.y, "main window restored off-screen, centering it");
+    // A maximized window has to come back to its normal size to move: maximizing again then fills
+    // the display it was centered on.
+    let maximized = w.is_maximized().unwrap_or(false);
+    if maximized {
+        let _ = w.unmaximize();
+    }
+    let _ = w.center();
+    if maximized {
+        let _ = w.maximize();
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 /// Logs to stdout **and** to `<app data>/limusic.log`, truncated each launch (the previous run is
 /// kept as `limusic.log.1`).
@@ -418,6 +444,9 @@ pub fn run() {
             let data_dir = app.path().app_data_dir().unwrap_or_else(|_| std::env::temp_dir());
             std::fs::create_dir_all(&data_dir).ok();
             init_logging(&data_dir);
+            if let Some(w) = app.get_webview_window("main") {
+                keep_on_screen(&w);
+            }
             let cache_dir = data_dir.join("audio-cache");
             std::fs::create_dir_all(&cache_dir).ok();
 
