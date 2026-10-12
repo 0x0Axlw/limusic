@@ -131,6 +131,7 @@ fn tune_webview(win: &tauri::WebviewWindow, media: bool) {
             // WKWebView's allowsBackForwardNavigationGestures, which wry does not expose.
             settings.set_enable_back_forward_navigation_gestures(true);
         }
+        heal_lost_release(&webview);
     });
     match res {
         Ok(()) => {
@@ -138,6 +139,49 @@ fn tune_webview(win: &tauri::WebviewWindow, media: bool) {
         }
         Err(e) => tracing::warn!(label, error = %e, "webkit tuning failed (continuing)"),
     }
+}
+
+/// Hands WebKit a left-button release it never got. A titlebar drag starts a compositor move grab
+/// (tauri's `start_dragging`, run later on the GTK loop), and the grab eats the release of whichever
+/// press it caught. WebKit then still counts the button as down and turns the next press into a
+/// `pointermove`, so nothing listening for `pointerdown` sees it: after a double-click on the bar,
+/// the first click outside an open dialog didn't close it (#427). A second left press without a
+/// release in between can only mean one was lost, so it is sent first. At (-1, -1), so its
+/// `mouseup`/`click` land on `<html>` rather than on whatever is now under the old spot.
+/// `ui/perf/dragpress.py` shows both the stuck press and this fix on the system WebKitGTK.
+#[cfg(target_os = "linux")]
+fn heal_lost_release(webview: &webkit2gtk::WebView) {
+    use gtk::gdk::{self, glib::translate::ToGlibPtrMut};
+    use gtk::prelude::*;
+    use std::{cell::Cell, rc::Rc};
+
+    let held = Rc::new(Cell::new(false));
+    let on_press = held.clone();
+    webview.connect_button_press_event(move |view, e| {
+        if e.button() != 1 || e.event_type() != gdk::EventType::ButtonPress {
+            return gtk::glib::Propagation::Proceed;
+        }
+        if on_press.get() {
+            let mut release = e.clone();
+            // SAFETY: `release` is our own copy of a GdkEventButton; only plain fields change.
+            unsafe {
+                let raw: *mut gdk::ffi::GdkEventButton = release.to_glib_none_mut().0;
+                (*raw).type_ = gdk::ffi::GDK_BUTTON_RELEASE;
+                (*raw).x = -1.0;
+                (*raw).y = -1.0;
+                (*raw).state |= gdk::ffi::GDK_BUTTON1_MASK;
+            }
+            view.event(&release); // runs the release handler below, which clears `held`
+        }
+        on_press.set(true);
+        gtk::glib::Propagation::Proceed
+    });
+    webview.connect_button_release_event(move |_, e| {
+        if e.button() == 1 {
+            held.set(false);
+        }
+        gtk::glib::Propagation::Proceed
+    });
 }
 
 /// WebGL in the main window, which [`tune_webview`] turns off: the ambient light draws its glow with
