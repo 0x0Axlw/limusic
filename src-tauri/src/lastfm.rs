@@ -904,25 +904,47 @@ fn parse_profile(body: &serde_json::Value) -> Option<Profile> {
 /// Open a URL in the user's default browser. No opener plugin in the app; three lines cover the
 /// three platforms.
 pub(crate) fn open_browser(url: &str) -> Result<(), String> {
+    let url = web_url(url)?;
+    let url = url.as_str();
     #[cfg(target_os = "linux")]
     let cmd = {
         let mut cmd = std::process::Command::new("xdg-open");
         cmd.arg(url);
         unappimage(&mut cmd);
-        cmd.spawn()
+        cmd.spawn().map(|_| ())
     };
     #[cfg(target_os = "macos")]
-    let cmd = std::process::Command::new("open").arg(url).spawn();
-    // cmd.exe re-parses its own command line, and `Command::arg` only quotes args containing
-    // spaces — so an unquoted `&` in the URL split it into a second command and the browser got
-    // `…/auth?api_key=X` with the token chopped off ("Invalid API key" once the user clicks Allow).
-    // raw_arg passes the quoted URL through verbatim.
+    let cmd = std::process::Command::new("open").arg(url).spawn().map(|_| ());
+    // ShellExecute, not `cmd /C start`: cmd.exe re-parses its command line, so a `"` in the URL
+    // ended the quoting and the rest ran as a command, and `%VAR%` expanded. ShellExecute hands the
+    // URL to the browser as one string, `&` included (the Last.fm token after it used to get
+    // chopped off).
     #[cfg(target_os = "windows")]
     let cmd = {
-        use std::os::windows::process::CommandExt;
-        std::process::Command::new("cmd").raw_arg(format!("/C start \"\" \"{url}\"")).spawn()
+        use windows::core::{w, HSTRING, PCWSTR};
+        use windows::Win32::UI::Shell::ShellExecuteW;
+        use windows::Win32::UI::WindowsAndMessaging::SW_SHOWNORMAL;
+        let file = HSTRING::from(url);
+        let h = unsafe {
+            ShellExecuteW(None, w!("open"), &file, PCWSTR::null(), PCWSTR::null(), SW_SHOWNORMAL)
+        };
+        // Anything above 32 is success.
+        if h.0 as isize > 32 {
+            Ok(())
+        } else {
+            Err(std::io::Error::last_os_error())
+        }
     };
-    cmd.map(|_| ()).map_err(|e| format!("Couldn't open the browser: {e}"))
+    cmd.map_err(|e| format!("Couldn't open the browser: {e}"))
+}
+
+/// Only http(s), and re-serialised: the parser percent-encodes quotes, spaces and angle brackets,
+/// so what reaches the OS is a plain URL whatever the caller passed in.
+fn web_url(url: &str) -> Result<tauri::Url, String> {
+    tauri::Url::parse(url)
+        .ok()
+        .filter(|u| matches!(u.scheme(), "http" | "https"))
+        .ok_or_else(|| "only http(s) links".to_string())
 }
 
 /// Undo the AppImage's environment for a child process.
@@ -974,6 +996,17 @@ fn now_secs() -> u64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn only_plain_web_urls_reach_the_browser() {
+        assert!(web_url("file:///etc/passwd").is_err());
+        assert!(web_url("javascript:alert(1)").is_err());
+        assert!(web_url("C:\\Windows\\System32\\calc.exe").is_err());
+        let u = web_url(r#"https://x.test/a"&calc&"?q="b c"#).unwrap();
+        assert!(!u.as_str().contains(['"', ' ']), "{u}");
+        let auth = "https://www.last.fm/api/auth/?api_key=K&token=T";
+        assert_eq!(web_url(auth).unwrap().as_str(), auth);
+    }
 
     /// The signature is the auth-critical path: params sorted by name, `namevalue` concat, secret
     /// appended, md5 hex. Verified against a hand-computed digest (secret is "" in test builds).

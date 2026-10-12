@@ -2504,9 +2504,6 @@ pub async fn check_beta_update(webview: tauri::Webview) -> Result<Option<BetaUpd
 /// the app itself off the SPA, with no way back.
 #[tauri::command]
 pub async fn open_external(url: String) -> Result<(), String> {
-    if !url.starts_with("https://") && !url.starts_with("http://") {
-        return Err("only http(s) links".into());
-    }
     crate::lastfm::open_browser(&url)
 }
 
