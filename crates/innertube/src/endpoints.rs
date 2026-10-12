@@ -826,6 +826,20 @@ impl InnerTube {
         Ok(page)
     }
 
+    /// An artist page's "Appears on" shelf (#456), read off `songs_id`, the page's
+    /// `top_songs_id` playlist. See [`browse::appears_on`].
+    pub async fn artist_appears_on(
+        &self,
+        client: &YouTubeClient,
+        artist_id: &str,
+        songs_id: &str,
+    ) -> Result<Vec<BrowseItem>, Error> {
+        let songs = self.playlist(client, songs_id, None).await?;
+        let mut items = browse::appears_on(&songs.items, artist_id);
+        self.drop_blocked_cards(&mut items);
+        Ok(items)
+    }
+
     /// A browse target that returns a grid of cards (e.g. an artist's "all albums" page reached
     /// via a carousel's "More" button). context/08.
     pub async fn browse_grid(
