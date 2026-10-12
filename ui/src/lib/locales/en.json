@@ -321,6 +321,7 @@
 		"saved_in": "Saved in",
 		"saved_in_one": "Saved in {playlist}",
 		"saved_in_many": "Saved in {count} playlists",
+		"saved_in_count": "{count} playlists",
 		"saved_in_more": "and {count} more"
 	},
 	"local": {
