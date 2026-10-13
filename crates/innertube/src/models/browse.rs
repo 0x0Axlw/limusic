@@ -843,14 +843,9 @@ pub fn parse_album(root: &Value) -> AlbumPage {
                 it.artist_id = it.artist_id.take().or_else(|| artist_id.clone());
                 it.artist_runs = runs.clone();
             }
-            // Every row here is a track of the release this page is for, so the page title is
-            // the album — stamp it over whatever the row parsed with. That guard used to be
-            // `if it.album.is_none()`, and it let the count through: an album row keeps its artist
-            // column empty and puts the count alone in the third one with nothing to link, so
-            // `album_column` takes it for a name on every locale that writes the count with the
-            // word first ("Tocou 25 mi vezes"). The guard then saw a filled album and stood down,
-            // and the card showed a count where the release goes. Issue #451.
-            it.album.clone_from(&title);
+            // Every row here belongs to this album, so the page title is the album.
+            // It fixes #451, where a play count written word-first was read as the album.
+            it.album = title.clone().or(it.album.take());
             it
         })
         .collect();

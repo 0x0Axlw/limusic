@@ -533,19 +533,8 @@ pub(crate) fn parse_list_item(node: &Value) -> Option<SongItem> {
     // so read it the other way: a duration-shaped, unlinked third column is the length.
     let duration =
         duration.or_else(|| fixed_column_text(node)).or_else(|| flex_column_duration(node));
-    // …and the album in a column of its own rather than in the subtitle runs. An artist page's top
-    // songs put the play count in that column and the album in a fourth one (#377).
-    //
-    // Best evidence first, and the order is what makes it work: `album_column` is a guess — it
-    // takes anything that is neither a length nor a count — and the guess only holds while the
-    // count opens with a digit. It does not in every locale. `hl` follows the UI language (#274),
-    // and Portuguese writes "Tocou 93 mi vezes" with the word first, so `play_count` declines it,
-    // `album_column` swallows it, and the count ships as the album to Discord's third line, the OS
-    // media session and the scrobbler while the real album sits in the next column, linked and
-    // unread. A linked column is a page YouTube built, so it is the one source here that is not a
-    // guess about a string; it goes first, and the guess only runs once nothing linked, which is
-    // the playlist and library row that keeps its album name in the third column unlinked.
-    // Issue #451.
+    // The album can also sit in its own column. A linked name goes first (#451, #377);
+    // plain text is only the fallback for playlist and library rows.
     let album = album
         .or_else(|| {
             (3..flex.map_or(0, Vec::len))
@@ -1547,10 +1536,8 @@ mod tests {
         }
     }
 
-    // The shape that first looked like the fix: a count opens with a digit, so "starts with a
-    // digit" is not a count. These rows keep their album only because the read prefers the link,
-    // so this fails the day someone reorders the two the other way round. Live rows checked
-    // 2026-10-11, where 28 of 280 audio rows name a release this way.
+    // Number-like album names ("1989", "24 Songs") still read as albums.
+    // They come from the subtitle text, so column order does not change them.
     #[test]
     fn an_album_named_after_a_number_is_still_an_album() {
         let row = |second: &str| {
