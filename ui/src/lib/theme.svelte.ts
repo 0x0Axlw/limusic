@@ -14,6 +14,7 @@
 // through — the customization is a set of overrides, not a rival theme to maintain.
 
 import { convertFileSrc } from '@tauri-apps/api/core';
+import { logUi } from './errlog';
 import { hexToHsv, isLight } from './color';
 import { artworkAccent, toAccent, warmAccent } from './artcolor';
 import {
@@ -487,24 +488,53 @@ export async function initMatugen(): Promise<void> {
 	return runMatugenLifecycle(async () => {
 		if (matugenUnlisten || operationId !== matugenOperationId || !appearance.matugen) return;
 		let latestEventSeen = false;
+		let watcherStarted = false;
 		try {
 			await startMatugenWatcher();
-		} catch {
-			// ignore
+			watcherStarted = true;
+		} catch (e) {
+			if (operationId === matugenOperationId && appearance.matugen) {
+				logUi('error', `Matugen watcher could not be started; live palette updates are off: ${String(e)}`);
+			}
 		}
 		if (operationId !== matugenOperationId || !appearance.matugen) {
-			try {
-				await stopMatugenWatcher();
-			} catch {
-				// ignore
+			if (watcherStarted) {
+				try {
+					await stopMatugenWatcher();
+				} catch {
+					// ignore
+				}
 			}
 			return;
 		}
-		const unlisten = await onMatugenThemeChanged((css) => {
-			if (!appearance.matugen || operationId !== matugenOperationId) return;
-			latestEventSeen = true;
+		if (!watcherStarted) {
+			const css = await getMatugenTheme().catch(() => null);
+			if (operationId !== matugenOperationId || !appearance.matugen) return;
 			applyMatugenTheme(css);
-		});
+			return;
+		}
+		let unlisten: (() => void);
+		try {
+			unlisten = await onMatugenThemeChanged((css) => {
+				if (!appearance.matugen || operationId !== matugenOperationId) return;
+				latestEventSeen = true;
+				applyMatugenTheme(css);
+			});
+		} catch (e) {
+			if (operationId === matugenOperationId && appearance.matugen) {
+				logUi('error', `Matugen theme subscription failed; live palette updates are off: ${String(e)}`);
+			}
+			try {
+				await stopMatugenWatcher();
+			} catch (stopError) {
+				logUi('error', `Matugen watcher could not be stopped after subscription failure: ${String(stopError)}`);
+			}
+			if (operationId !== matugenOperationId || !appearance.matugen) return;
+			const css = await getMatugenTheme().catch(() => null);
+			if (operationId !== matugenOperationId || !appearance.matugen) return;
+			applyMatugenTheme(css);
+			return;
+		}
 		if (operationId !== matugenOperationId || !appearance.matugen) {
 			unlisten();
 			try {

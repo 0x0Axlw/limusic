@@ -32,33 +32,32 @@ struct WatcherRuntime {
 
 static WATCHER: Mutex<Option<WatcherRuntime>> = Mutex::new(None);
 
-pub fn start(app: AppHandle) {
+pub fn start(app: AppHandle) -> Result<(), String> {
     let mut guard = WATCHER.lock().unwrap_or_else(|e| e.into_inner());
     if guard.is_some() {
-        return;
+        return Ok(());
     }
 
-    let watched = match path(&app) {
-        Ok(p) => p,
-        Err(_) => return,
-    };
+    let watched =
+        path(&app).map_err(|e| format!("Matugen could not resolve its config path: {e}"))?;
     let Some(parent) = watched.parent().map(PathBuf::from) else {
-        return;
+        return Err(format!("Matugen config path has no parent directory: {}", watched.display()));
     };
-    let _ = fs::create_dir_all(&parent);
+    fs::create_dir_all(&parent).map_err(|e| {
+        format!("Matugen could not create its config directory {}: {e}", parent.display())
+    })?;
 
     let stop = Arc::new(AtomicBool::new(false));
     let stop_for_thread = stop.clone();
 
     let (tx, rx) = mpsc::channel();
-    let Ok(mut watcher) = recommended_watcher(move |r| {
+    let mut watcher = recommended_watcher(move |r| {
         let _ = tx.send(r);
-    }) else {
-        return;
-    };
-    if watcher.watch(&parent, RecursiveMode::NonRecursive).is_err() {
-        return;
-    }
+    })
+    .map_err(|e| format!("Matugen could not create a filesystem watcher: {e}"))?;
+    watcher.watch(&parent, RecursiveMode::NonRecursive).map_err(|e| {
+        format!("Matugen could not watch its config directory {}: {e}", parent.display())
+    })?;
 
     let handle_app = app.clone();
     let thread = thread::spawn(move || {
@@ -92,6 +91,7 @@ pub fn start(app: AppHandle) {
     });
 
     guard.replace(WatcherRuntime { stop, thread });
+    Ok(())
 }
 
 pub fn stop() {

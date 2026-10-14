@@ -2725,8 +2725,8 @@ pub fn get_matugen_theme(app: tauri::AppHandle) -> Result<Option<String>, String
 }
 
 #[tauri::command]
-pub fn start_matugen_watcher(app: tauri::AppHandle) {
-    crate::matugen::start(app);
+pub fn start_matugen_watcher(app: tauri::AppHandle) -> Result<(), String> {
+    crate::matugen::start(app)
 }
 
 #[tauri::command]
