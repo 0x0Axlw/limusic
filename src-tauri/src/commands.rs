@@ -2724,6 +2724,16 @@ pub fn get_matugen_theme(app: tauri::AppHandle) -> Result<Option<String>, String
     crate::matugen::read(&app)
 }
 
+#[tauri::command]
+pub fn start_matugen_watcher(app: tauri::AppHandle) {
+    crate::matugen::start(app);
+}
+
+#[tauri::command]
+pub fn stop_matugen_watcher() {
+    crate::matugen::stop();
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
