@@ -533,13 +533,14 @@ pub(crate) fn parse_list_item(node: &Value) -> Option<SongItem> {
     // so read it the other way: a duration-shaped, unlinked third column is the length.
     let duration =
         duration.or_else(|| fixed_column_text(node)).or_else(|| flex_column_duration(node));
-    // …and the album in a column of its own rather than in the subtitle runs. An artist page's top
-    // songs put the play count in that column and the album in a fourth one (#377), so past it,
-    // take whichever column links an album page.
-    let album = album.or_else(|| album_column(node)).or_else(|| {
-        (3..flex.map_or(0, Vec::len))
-            .find_map(|i| flex_runs(node, i).and_then(|r| album_from_runs(r)))
-    });
+    // The album can also sit in its own column. A linked name goes first (#451, #377);
+    // plain text is only the fallback for playlist and library rows.
+    let album = album
+        .or_else(|| {
+            (3..flex.map_or(0, Vec::len))
+                .find_map(|i| flex_runs(node, i).and_then(|r| album_from_runs(r)))
+        })
+        .or_else(|| album_column(node));
     let artist_id = subtitle_runs.and_then(|r| first_artist_id(r));
     // Only when this row's own menu offers the remove action. Every playlist row carries a
     // playlistSetVideoId, including rows on a playlist you can't edit (live-checked 2026-08-23),
@@ -1498,6 +1499,70 @@ mod tests {
         assert_eq!(song.play_count.as_deref(), Some("1.2B"));
         assert_eq!(song.album.as_deref(), Some("The Album"));
         assert_eq!(song.album_id.as_deref(), Some("MPREalbum1"));
+    }
+
+    // An artist page's Top songs row reads "Title | Artist | plays | Album", and the album in the
+    // fourth column links its own page. `album_column` reads the third one on a guess — anything
+    // that is not a length and not a count — and that guess only holds while the count opens with
+    // a digit. It does not: `hl` follows the UI language (#274), and Portuguese leads with the
+    // verb ("Tocou 93 mi vezes"), so `play_count` declines it, `album_column` swallows it, and the
+    // count ships as the album to Discord, MPRIS and the scrobbler while the real album sits in
+    // the next column, linked and unread. Reading the link before the guess makes the locale stop
+    // mattering. Lifted from a live artist page, hl=pt.
+    #[test]
+    fn a_linked_album_beats_a_localized_play_count() {
+        let row = |second: &str| {
+            json!({
+                "playlistItemData": { "videoId": "abc123" },
+                "flexColumns": [
+                    { "musicResponsiveListItemFlexColumnRenderer": { "text": { "runs": [{ "text": "The Summoning" }] } } },
+                    { "musicResponsiveListItemFlexColumnRenderer": { "text": { "runs": [
+                        { "text": "Sleep Token",
+                          "navigationEndpoint": { "browseEndpoint": { "browseId": "UCsleeptoken" } } }
+                    ] } } },
+                    { "musicResponsiveListItemFlexColumnRenderer": { "text": { "runs": [{ "text": second }] } } },
+                    { "musicResponsiveListItemFlexColumnRenderer": { "text": { "runs": [{
+                        "text": "Take Me Back To Eden",
+                        "navigationEndpoint": { "browseEndpoint": { "browseId": "MPREb_VVttKm9imi6" } }
+                    }] } } }
+                ]
+            })
+        };
+        // Whatever the locale orders the count in, the linked album is the one that wins.
+        for count in ["Tocou 93\u{a0}mi vezes", "93M plays", "再生回数 9385万 回"] {
+            let song = parse_list_item(&row(count)).unwrap();
+            assert_eq!(song.album.as_deref(), Some("Take Me Back To Eden"), "count {count:?} won");
+            assert_eq!(song.album_id.as_deref(), Some("MPREb_VVttKm9imi6"));
+        }
+    }
+
+    // Number-like album names ("1989", "24 Songs") still read as albums.
+    // They come from the subtitle text, so column order does not change them.
+    #[test]
+    fn an_album_named_after_a_number_is_still_an_album() {
+        let row = |second: &str| {
+            json!({ "musicResponsiveListItemRenderer": {
+                "playlistItemData": { "videoId": "abc123" },
+                "flexColumns": [
+                    { "musicResponsiveListItemFlexColumnRenderer": { "text": { "runs": [{ "text": "Song Title" }] } } },
+                    { "musicResponsiveListItemFlexColumnRenderer": { "text": { "runs": [
+                        { "text": "The Artist" },
+                        { "text": " • " },
+                        { "text": second },
+                        { "text": " • " },
+                        { "text": "3:41" }
+                    ] } } }
+                ]
+            }})
+        };
+        for album in ["1989 (Deluxe)", "24 Songs", "5SOS5", "2nd Collection"] {
+            let row = row(album);
+            assert_eq!(
+                parse_list_item(&row["musicResponsiveListItemRenderer"]).unwrap().album.as_deref(),
+                Some(album),
+                "{album:?} is a release, not a count"
+            );
+        }
     }
 
     // #274 again, the other half: with `hl=ko` a row YouTube stripped the artist from reads
