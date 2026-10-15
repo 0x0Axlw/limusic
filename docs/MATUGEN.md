@@ -1,33 +1,28 @@
 # Matugen integration
 
 Matugen support is **opt-in**. Limusic never reads or watches a Matugen file unless the
-"Matugen" toggle under Settings → Themes is enabled.
+**Matugen** switch under Settings ▸ Appearance is on.
 
 ## What it does
 
 While enabled, Limusic injects the generated CSS from your Matugen output file as a
 stylesheet and adds the `matugen-theme` class to `<html>`. The generated palette then owns
-the application's color tokens, including the accent. Wallpaper regeneration by Matugen
-updates `matugen.css`; Limusic reloads it live.
+the application's color tokens, accent included: the accent picker and "Adapt colors to
+artwork" are switched off while it's on. When Matugen regenerates `matugen.css` after a
+wallpaper change, Limusic reloads it live.
 
 ## Expected CSS path
 
-Limusic reads its generated CSS from the application config directory:
+Limusic reads `limusic/matugen.css` from the system config directory:
 
 - Linux: `~/.config/limusic/matugen.css`
-- (derived from `BaseDirectory::Config` + `limusic/matugen.css` in `src-tauri/src/matugen.rs`)
-
-Do not point Matugen anywhere else.
-
-## Repository template
-
-The committed example template is:
-
-- `templates/limusic.css`
+- Windows: `%APPDATA%\limusic\matugen.css`
+- macOS: `~/Library/Application Support/limusic/matugen.css`
 
 ## Configure Matugen
 
-1. Copy `templates/limusic.css` into your Matugen templates directory.
+1. Copy [`matugen-template.css`](matugen-template.css) into your Matugen templates directory
+   as `limusic.css`.
 2. Add a template entry to your Matugen config, for example:
 
 ```toml
@@ -36,8 +31,7 @@ input_path = "~/.config/matugen/templates/limusic.css"
 output_path = "~/.config/limusic/matugen.css"
 ```
 
-Adjust the paths to match your setup; the `output_path` must be Limusic's expected path
-above.
+Adjust `input_path` to match your setup; `output_path` must be the path above for your system.
 
 3. Run Matugen against an image:
 
@@ -49,21 +43,21 @@ Or otherwise regenerate after changing wallpaper.
 
 ## Enable in Limusic
 
-Open Settings → Themes and toggle **Matugen** on. Limusic starts its file watcher and loads
-the generated palette. With the toggle off (the default), no watcher starts and the
+Open Settings ▸ Appearance and turn **Matugen** on. Limusic starts its file watcher and loads
+the generated palette. With the switch off (the default), no watcher starts and the
 `limusic/matugen.css` file is not read or created.
 
 ## Disable
 
-Toggle **Matugen** off. Limusic stops the watcher, unregisters its listener, removes the
-injected stylesheet and restores the normal theme. Your template and generated CSS file are
-not deleted.
+Turn **Matugen** off. Limusic stops the watcher, removes the injected stylesheet and restores
+the normal theme, including your own accent. Your template and generated CSS file are not
+deleted.
 
 ## Troubleshooting
 
-- **No colors change:** verify Matugen wrote `limusic/matugen.css` at the expected path and
-  that the template is configured with that `output_path`.
+- **No colors change:** verify Matugen wrote `matugen.css` at the expected path and that the
+  template is configured with that `output_path`.
 - **Invalid template syntax:** validate by running `matugen image <file>`; check that the
   generated file contains `html.matugen-theme` and `html.matugen-theme.dark` selectors.
-- **Watcher not updating:** make sure Matugen writes (not just prints) the file, then toggle
+- **Watcher not updating:** make sure Matugen writes (not just prints) the file, then turn
   Matugen off and on again.

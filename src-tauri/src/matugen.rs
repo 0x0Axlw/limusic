@@ -1,11 +1,8 @@
-use notify::{recommended_watcher, RecursiveMode, Watcher};
+use notify::{recommended_watcher, RecommendedWatcher, RecursiveMode, Watcher};
 use std::{
     fs,
     path::PathBuf,
-    sync::{
-        atomic::{AtomicBool, Ordering},
-        mpsc, Arc, Mutex,
-    },
+    sync::{mpsc, Mutex},
     thread,
     time::Duration,
 };
@@ -25,12 +22,8 @@ pub fn read(app: &AppHandle) -> Result<Option<String>, String> {
     }
 }
 
-struct WatcherRuntime {
-    stop: Arc<AtomicBool>,
-    thread: thread::JoinHandle<()>,
-}
-
-static WATCHER: Mutex<Option<WatcherRuntime>> = Mutex::new(None);
+/// The live watcher while the setting is on. Dropping it ends the thread in `start`.
+static WATCHER: Mutex<Option<RecommendedWatcher>> = Mutex::new(None);
 
 pub fn start(app: AppHandle) -> Result<(), String> {
     let mut guard = WATCHER.lock().unwrap_or_else(|e| e.into_inner());
@@ -47,9 +40,6 @@ pub fn start(app: AppHandle) -> Result<(), String> {
         format!("Matugen could not create its config directory {}: {e}", parent.display())
     })?;
 
-    let stop = Arc::new(AtomicBool::new(false));
-    let stop_for_thread = stop.clone();
-
     let (tx, rx) = mpsc::channel();
     let mut watcher = recommended_watcher(move |r| {
         let _ = tx.send(r);
@@ -59,48 +49,31 @@ pub fn start(app: AppHandle) -> Result<(), String> {
         format!("Matugen could not watch its config directory {}: {e}", parent.display())
     })?;
 
-    let handle_app = app.clone();
-    let thread = thread::spawn(move || {
-        let _watcher = watcher;
-        let mut pending = false;
-
-        while !stop_for_thread.load(Ordering::Relaxed) {
-            match rx.recv_timeout(Duration::from_millis(100)) {
-                Ok(Ok(event)) => {
-                    if event.kind.is_access() {
-                        continue;
-                    }
-                    if !event.paths.iter().any(|p| p == &watched) {
-                        continue;
-                    }
-                    pending = true;
-                }
-                Ok(Err(error)) => {
+    thread::spawn(move || {
+        // Ends when stop() drops the watcher, which closes the channel.
+        while let Ok(event) = rx.recv() {
+            let event = match event {
+                Ok(event) => event,
+                Err(error) => {
                     tracing::warn!(%error, "Matugen watcher reported an error");
+                    continue;
                 }
-                Err(mpsc::RecvTimeoutError::Timeout) => {
-                    if pending {
-                        pending = false;
-                        let css = fs::read_to_string(&watched).ok();
-                        let _ = handle_app.emit("matugen-theme-changed", css);
-                    }
-                }
-                Err(mpsc::RecvTimeoutError::Disconnected) => break,
+            };
+            // inotify reports opens too, so without the access filter our own read below would
+            // wake this loop forever.
+            if event.kind.is_access() || !event.paths.contains(&watched) {
+                continue;
             }
+            // One write is several events (truncate, data, close): read once after they stop.
+            while rx.recv_timeout(Duration::from_millis(100)).is_ok() {}
+            let _ = app.emit("matugen-theme-changed", fs::read_to_string(&watched).ok());
         }
     });
 
-    guard.replace(WatcherRuntime { stop, thread });
+    *guard = Some(watcher);
     Ok(())
 }
 
 pub fn stop() {
-    let runtime = {
-        let mut guard = WATCHER.lock().unwrap_or_else(|e| e.into_inner());
-        guard.take()
-    };
-    if let Some(runtime) = runtime {
-        runtime.stop.store(true, Ordering::Relaxed);
-        let _ = runtime.thread.join();
-    }
+    WATCHER.lock().unwrap_or_else(|e| e.into_inner()).take();
 }

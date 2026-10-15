@@ -87,7 +87,6 @@ const PALETTE_CLASSES = THEMES.map((t) => `theme-${t.id}`);
 /** Set on <html> while the artwork tint is live; the fill rules in layout.css hang off it. */
 const TINT_CLASS = 'art-tint';
 const MATUGEN_STYLE_ID = 'limusic-matugen';
-let matugenActive = false;
 const ACCENT_VARS = ['--primary', '--primary-foreground', '--accent', '--accent-foreground'];
 const CUSTOM_VARS = ['--hue', '--radius', '--font-sans', '--font-heading'];
 // Same two neutrals the preset accent themes pick between.
@@ -215,7 +214,8 @@ function apply(): void {
 	root.classList.remove(...PALETTE_CLASSES, TINT_CLASS);
 	root.classList.add(`theme-${t.id}`); // 'default' has no rule: :root/.dark are its tokens
 
-	if (custom.accent && !matugenActive) setAccentVars(custom.accent);
+	// The Matugen palette brings its own accent (its stylesheet sets it), so the custom one steps aside.
+	if (custom.accent && !appearance.matugen) setAccentVars(custom.accent);
 	// Last, so the artwork wins while it's on and the user's own theme is back the moment it isn't.
 	if (art) setArtVars(art);
 	if (custom.hue !== null) root.style.setProperty('--hue', String(custom.hue));
@@ -407,9 +407,7 @@ export function setUiVisible(visible: boolean): void {
  */
 function setArtVars(c: { h: number; hex: string }): void {
 	// AMOLED stays black in light mode (layout.css), so the tint and the accent band stay dark too.
-	if (!matugenActive) {
-		setAccentVars(toAccent(c.hex, darkMode || theme.id === 'amoled'));
-	}
+	setAccentVars(toAccent(c.hex, darkMode || theme.id === 'amoled'));
 	document.documentElement.style.setProperty('--art-h', c.h.toFixed(1));
 	document.documentElement.classList.add(TINT_CLASS);
 }
@@ -454,7 +452,6 @@ function applyMatugenTheme(css: string | null): void {
 	if (!css) {
 		style?.remove();
 		document.documentElement.classList.remove('matugen-theme');
-		matugenActive = false;
 		apply();
 		return;
 	}
@@ -465,118 +462,29 @@ function applyMatugenTheme(css: string | null): void {
 	}
 	style.textContent = css;
 	document.documentElement.classList.add('matugen-theme');
-	matugenActive = true;
 	apply();
 }
 
 let matugenUnlisten: (() => void) | null = null;
-let matugenOperationId = 0;
-let matugenLifecycle: Promise<void> = Promise.resolve();
+let matugenQueue = Promise.resolve();
 
-/** Serialize backend watcher commands so overlapping toggles cannot create/leak a watcher. */
-function runMatugenLifecycle(task: () => Promise<void>): Promise<void> {
-	const run = matugenLifecycle.then(task);
-	matugenLifecycle = run.then(
-		() => undefined,
-		() => undefined
-	);
-	return run;
-}
-
-export async function initMatugen(): Promise<void> {
-	const operationId = ++matugenOperationId;
-	return runMatugenLifecycle(async () => {
-		if (matugenUnlisten || operationId !== matugenOperationId || !appearance.matugen) return;
-		let latestEventSeen = false;
-		let watcherStarted = false;
-		try {
-			await startMatugenWatcher();
-			watcherStarted = true;
-		} catch (e) {
-			if (operationId === matugenOperationId && appearance.matugen) {
-				logUi('error', `Matugen watcher could not be started; live palette updates are off: ${String(e)}`);
-			}
-		}
-		if (operationId !== matugenOperationId || !appearance.matugen) {
-			if (watcherStarted) {
-				try {
-					await stopMatugenWatcher();
-				} catch {
-					// ignore
-				}
-			}
-			return;
-		}
-		if (!watcherStarted) {
-			const css = await getMatugenTheme().catch(() => null);
-			if (operationId !== matugenOperationId || !appearance.matugen) return;
-			applyMatugenTheme(css);
-			return;
-		}
-		let unlisten: (() => void);
-		try {
-			unlisten = await onMatugenThemeChanged((css) => {
-				if (!appearance.matugen || operationId !== matugenOperationId) return;
-				latestEventSeen = true;
-				applyMatugenTheme(css);
-			});
-		} catch (e) {
-			if (operationId === matugenOperationId && appearance.matugen) {
-				logUi('error', `Matugen theme subscription failed; live palette updates are off: ${String(e)}`);
-			}
-			try {
-				await stopMatugenWatcher();
-			} catch (stopError) {
-				logUi('error', `Matugen watcher could not be stopped after subscription failure: ${String(stopError)}`);
-			}
-			if (operationId !== matugenOperationId || !appearance.matugen) return;
-			const css = await getMatugenTheme().catch(() => null);
-			if (operationId !== matugenOperationId || !appearance.matugen) return;
-			applyMatugenTheme(css);
-			return;
-		}
-		if (operationId !== matugenOperationId || !appearance.matugen) {
-			unlisten();
-			try {
-				await stopMatugenWatcher();
-			} catch {
-				// ignore
-			}
-			return;
-		}
-		matugenUnlisten = unlisten;
-		const css = await getMatugenTheme().catch(() => null);
-		if (operationId !== matugenOperationId || !appearance.matugen) {
-			if (matugenUnlisten === unlisten) {
+/** Start or stop following the Matugen file to match the switch. Queued, so a fast off/on can't interleave. */
+export function syncMatugen(): Promise<void> {
+	matugenQueue = matugenQueue
+		.then(async () => {
+			if (appearance.matugen && !matugenUnlisten) {
+				matugenUnlisten = await onMatugenThemeChanged(applyMatugenTheme);
+				await startMatugenWatcher();
+				applyMatugenTheme(await getMatugenTheme());
+			} else if (!appearance.matugen && matugenUnlisten) {
+				matugenUnlisten();
 				matugenUnlisten = null;
-			}
-			unlisten();
-			try {
 				await stopMatugenWatcher();
-			} catch {
-				// ignore
+				applyMatugenTheme(null);
 			}
-			return;
-		}
-		if (!latestEventSeen) applyMatugenTheme(css);
-	});
-}
-
-export async function disableMatugen(): Promise<void> {
-	const operationId = ++matugenOperationId;
-	return runMatugenLifecycle(async () => {
-		if (operationId !== matugenOperationId) return;
-		if (matugenUnlisten) {
-			matugenUnlisten();
-			matugenUnlisten = null;
-		}
-		try {
-			await stopMatugenWatcher();
-		} catch {
-			// ignore
-		}
-		applyMatugenTheme(null);
-	});
+		})
+		.catch((e) => logUi('error', `Matugen: ${String(e)}`));
+	return matugenQueue;
 }
 
 /** Apply the stored theme + customization on startup (defaults to the default palette, no overrides). */
@@ -626,9 +534,7 @@ export function initTheme(): void {
 		// unparseable — keep the defaults
 	}
 	apply();
-	if (appearance.matugen) {
-		initMatugen().catch(() => undefined);
-	}
+	if (appearance.matugen) syncMatugen();
 	// Async (each file needs its URL granted first), so the app paints in the fallback font for a
 	// frame or two before a loaded font swaps in.
 	if (custom.fontFiles.length) registerFontFiles();

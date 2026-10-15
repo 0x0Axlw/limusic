@@ -1,7 +1,7 @@
 /* Limusic Matugen palette template.
  *
- * Copy this file into your Matugen templates directory and point your
- * Matugen config at it, writing output to Limusic's generated CSS path
+ * Copy this file into your Matugen templates directory as limusic.css, point your
+ * Matugen config at it and write the output to Limusic's CSS path
  * (see docs/MATUGEN.md). Matugen expands the placeholders below.
  *
  * Light values are emitted under html.matugen-theme; dark values under

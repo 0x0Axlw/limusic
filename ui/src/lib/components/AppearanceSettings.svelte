@@ -46,8 +46,7 @@
 		effective,
 		applyTheme,
 		setCustom,
-		initMatugen,
-		disableMatugen,
+		syncMatugen,
 		resetCustom,
 		isDefaultCustom,
 		readBack,
@@ -577,7 +576,7 @@
 			</Popover.Content>
 		</Popover.Root>
 	</div>
-	{#if appearance.artworkAccent && playback.now}
+	{#if appearance.artworkAccent && !appearance.matugen && playback.now}
 		<p class="mt-3 max-w-prose text-xs leading-relaxed text-muted-foreground">
 			{t('settings.themes.accent_artwork_note')}
 		</p>
@@ -657,6 +656,7 @@
 
 {#snippet artworkAccentSwitch()}<Switch
 		checked={appearance.artworkAccent}
+		disabled={appearance.matugen}
 		onCheckedChange={(on) => setAppearance({ artworkAccent: on })}
 	/>{/snippet}
 {#snippet matugenSwitch()}<Switch
@@ -664,8 +664,7 @@
 		onCheckedChange={async (on) => {
 			pickerOpen = false;
 			setAppearance({ matugen: on });
-			if (on) await initMatugen();
-			else await disableMatugen();
+			await syncMatugen();
 		}}
 	/>{/snippet}
 {#snippet blurHeaderSwitch()}<Switch
